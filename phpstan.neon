@@ -1,0 +1,44 @@
+includes:
+    - vendor/larastan/larastan/extension.neon
+    - vendor/phpstan/phpstan-strict-rules/rules.neon
+
+parameters:
+    level: 10
+    tmpDir: .phpstan-cache
+    paths:
+        - app
+    scanDirectories:
+        - tests/PHPStanRules
+    excludePaths:
+        - app/Modules/*/Tests/*
+    strictRules:
+        requireParentConstructorCall: true
+    inferPrivatePropertyTypeFromConstructor: true
+    checkFunctionNameCase: true
+    checkInternalClassCaseSensitivity: true
+    checkMissingTypehints: true
+    checkArgumentsPassedByReference: true
+    checkMaybeUndefinedVariables: true
+    checkNullables: true
+    checkUnionTypes: true
+    checkExplicitMixed: true
+    checkImplicitMixed: true
+    checkMissingVarTagTypehint: true
+
+# Архитектурные правила проекта — см. ARCHITECTURE.md и tests/PHPStanRules
+rules:
+    - Tests\PHPStanRules\RequireStrictTypesRule
+    - Tests\PHPStanRules\NoDebugFunctionsRule
+    - Tests\PHPStanRules\RequireFinalClassRule
+    - Tests\PHPStanRules\ModuleNamingConventionRule
+    - Tests\PHPStanRules\ControllerInvokeOnlyRule
+    - Tests\PHPStanRules\ControllerHasFeatureTestRule
+    - Tests\PHPStanRules\RequireParentClassRule
+    - Tests\PHPStanRules\UnusedUseRule
+    - Tests\PHPStanRules\VariableCamelCaseRule
+    - Tests\PHPStanRules\ArchitectureRule
+    - Tests\PHPStanRules\ActionUsageRule
+    - Tests\PHPStanRules\RepositoryUsageRule
+    - Tests\PHPStanRules\DbAccessOnlyInRepositoryRule
+    - Tests\PHPStanRules\DbQueryInLoopRule
+    - Tests\PHPStanRules\InArrayInLoopRule

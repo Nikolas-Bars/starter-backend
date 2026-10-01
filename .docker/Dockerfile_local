@@ -1,0 +1,63 @@
+FROM ghcr.io/roadrunner-server/roadrunner:2025.1.11 AS roadrunner
+FROM php:8.3-cli
+
+# Системные зависимости одним слоем
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    supervisor \
+    curl \
+    git \
+    unzip \
+    zip \
+    libicu-dev \
+    libzip-dev \
+    libsqlite3-dev \
+    && apt-get autoremove -y \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
+
+# PHP-расширения: встроенные + redis/pcov из PECL
+RUN pecl install redis pcov \
+    && docker-php-ext-enable redis pcov \
+    && docker-php-ext-install -j"$(nproc)" \
+        bcmath \
+        intl \
+        opcache \
+        pcntl \
+        pdo_mysql \
+        sockets \
+        zip \
+    && pecl clear-cache \
+    && rm -rf /tmp/pear ~/.pearrc
+
+COPY .docker/php/php.dev.ini /usr/local/etc/php/php.ini
+
+COPY --from=composer:2 /usr/bin/composer /usr/local/bin/composer
+COPY --from=roadrunner /usr/bin/rr /usr/local/bin/rr
+
+WORKDIR /var/www/html
+
+# Монтируемая директория может принадлежать другому пользователю
+RUN git config --global --add safe.directory /var/www/html
+
+ENV COMPOSER_HOME=/tmp/composer
+ENV COMPOSER_CACHE_DIR=/tmp/composer-cache
+
+COPY .docker/supervisor/supervisord.dev.conf /etc/supervisor/conf.d/supervisord.conf
+
+RUN mkdir -p /var/www/html/vendor /tmp/composer /tmp/composer-cache \
+    && chown -R www-data:www-data /var/www/html /tmp/composer /tmp/composer-cache
+
+# Зависимости ставятся в образ: в docker-compose vendor закрыт анонимным томом,
+# поэтому код монтируется с хоста, а vendor берётся отсюда
+COPY --chown=www-data:www-data composer.json composer.lock ./
+
+USER www-data
+RUN --mount=type=cache,target=/tmp/composer-cache,uid=33,gid=33 \
+    composer install --no-scripts --no-autoloader --prefer-dist --no-ansi --no-interaction \
+    && composer dump-autoload --optimize --no-scripts
+USER root
+
+HEALTHCHECK --interval=5s --timeout=3s --start-period=10s --retries=30 \
+    CMD curl -fsS http://127.0.0.1/up > /dev/null || exit 1
+
+CMD ["supervisord", "-c", "/etc/supervisor/conf.d/supervisord.conf"]

@@ -1,0 +1,61 @@
+name: starter-api
+
+services:
+  php:
+    container_name: starter-api-php
+    build:
+      context: .
+      dockerfile: .docker/Dockerfile_local
+    restart: unless-stopped
+    working_dir: /var/www/html
+    ports:
+      - "${APP_PORT:-8090}:80"
+    volumes:
+      - .:/var/www/html
+      # vendor живёт в образе: на macOS bind-mount с тысячами файлов заметно тормозит
+      - /var/www/html/vendor
+    depends_on:
+      mariadb:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    extra_hosts:
+      - host.docker.internal:host-gateway
+
+  mariadb:
+    image: mariadb:11.4
+    container_name: starter-api-mariadb
+    restart: unless-stopped
+    ports:
+      - "${DB_FORWARD_PORT:-33070}:3306"
+    environment:
+      MARIADB_DATABASE: starter
+      MARIADB_USER: user
+      MARIADB_PASSWORD: user
+      MARIADB_ROOT_PASSWORD: root
+    volumes:
+      - mariadb:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+      start_period: 10s
+
+  redis:
+    image: redis:7-alpine
+    container_name: starter-api-redis
+    restart: unless-stopped
+    ports:
+      - "${REDIS_FORWARD_PORT:-6390}:6379"
+    volumes:
+      - redis:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+
+volumes:
+  mariadb:
+  redis:
