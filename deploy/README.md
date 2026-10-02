@@ -81,10 +81,12 @@ ssh starter 'chmod 600 /opt/starter/starter-backend/deploy/secrets/firebase-cred
 
 ## Бэкапы
 
-Каждый день в 03:30 (время сервера, UTC) `deploy/backup.sh` делает дамп БД, сжимает и шифрует его
-[age](https://age-encryption.org), кладёт в `/var/backups/starter/` (хранятся последние 14 дней) и
-присылает копию в Telegram. Расписание — `/etc/cron.d/starter-backup` (ставится командой
-`./backup.sh --install`), журнал — `/var/log/starter-backup.log`.
+Каждый день в 03:30 (время сервера, UTC) `deploy/backup.sh` собирает всё, чего нет в git, — дамп БД,
+`deploy/.env` и ключ Firebase — в один архив, шифрует его [age](https://age-encryption.org), кладёт
+в `/var/backups/starter/` (хранятся последние 14 дней) и присылает копию в Telegram. Этого архива
+достаточно, чтобы поднять всё на новом сервере (раздел «Переезд на новый сервер»).
+Расписание — `/etc/cron.d/starter-backup` (ставится командой `./backup.sh --install`),
+журнал — `/var/log/starter-backup.log`.
 
 Настройки в `deploy/.env`:
 
@@ -95,14 +97,14 @@ ssh starter 'chmod 600 /opt/starter/starter-backend/deploy/secrets/firebase-cred
 Секретный ключ лежит на Маке в `~/.config/starter/backup-age-key.txt`, копия — в менеджере паролей.
 На сервере его нет и быть не должно. Потерять его — потерять все бэкапы.
 
-Восстановить с Мака (текущие данные БД заменятся данными дампа; файл — из Telegram или с сервера):
+Восстановить с Мака (данные БД заменятся данными архива; файл — из Telegram или с сервера):
 
 ```bash
-age -d -i ~/.config/starter/backup-age-key.txt ~/Downloads/starter-2026-10-03-0330.sql.gz.age \
-  | gunzip \
-  | ssh starter 'cd /opt/starter/starter-backend/deploy && docker compose exec -T mariadb sh -c '\''MYSQL_PWD="$MARIADB_ROOT_PASSWORD" exec mariadb -uroot "$MARIADB_DATABASE"'\'''
+age -d -i ~/.config/starter/backup-age-key.txt ~/Downloads/starter-2026-10-03-0330.tar.gz.age \
+  | ssh starter /opt/starter/starter-backend/deploy/restore.sh
 ```
 
+Посмотреть, что внутри архива: `age -d -i ~/.config/starter/backup-age-key.txt файл.tar.gz.age | tar -tzv`.
 Сделать бэкап вручную: `ssh starter /opt/starter/starter-backend/deploy/backup.sh`.
 
 ## Частые команды
@@ -127,21 +129,66 @@ docker compose restart php                # после правки deploy/.env
 docker compose exec php php artisan migrate:fresh --force
 ```
 
-## Первая установка на чистый сервер
+## Переезд на новый сервер
+
+Если сервер умер или переезжаем к другому хостингу. Нужны: новый VPS на Ubuntu 24.04 (от 2 ГБ памяти)
+с root-паролем, последний бэкап из Telegram и секретный ключ age. Около часа.
+
+**1. Мак: доступ по ключу.** `НОВЫЙ_IP` — адрес нового сервера.
 
 ```bash
-apt-get update && apt-get install -y git ufw && curl -fsSL https://get.docker.com | sh
+ssh-copy-id -i ~/.ssh/starter_server root@НОВЫЙ_IP      # спросит root-пароль от хостинга, в последний раз
+sed -i '' 's/HostName .*/HostName НОВЫЙ_IP/' ~/.ssh/config   # Host starter → новый адрес
+ssh starter 'echo ok'
+```
+
+**2. Сервер: защита, Docker, код.** Вход по паролю выключается, ключ деплоя GitHub Actions может
+выполнить только `deploy.sh`.
+
+```bash
+ssh starter
+printf 'PasswordAuthentication no\nKbdInteractiveAuthentication no\n' > /etc/ssh/sshd_config.d/00-keys-only.conf
+systemctl reload ssh
+apt-get update && apt-get install -y git ufw age && curl -fsSL https://get.docker.com | sh
 ufw allow 22/tcp && ufw allow 80/tcp && ufw allow 443 && ufw allow 3478 && ufw allow 49160:49200/udp && ufw --force enable
 
 mkdir -p /opt/starter && cd /opt/starter
 git clone https://github.com/Nikolas-Bars/starter-backend.git
 git clone https://github.com/Nikolas-Bars/starter-frontend.git
-
-cd starter-backend/deploy
-cp .env.example .env    # заполнить ACME_EMAIL, APP_KEY и пароли
-docker compose up -d --build --wait
-docker compose exec php php artisan migrate --force
-./backup.sh --install   # ежедневный бэкап БД, раздел «Бэкапы»
+exit
 ```
 
-DNS (Cloudflare): записи `A @` и `A turn` → IP сервера в режиме «DNS only» (серое облако).
+```bash
+# с Мака: ключ, которым заходит GitHub Actions
+echo "command=\"/opt/starter/starter-backend/deploy/deploy.sh\",no-port-forwarding,no-X11-forwarding,no-agent-forwarding,no-pty $(cat ~/.ssh/starter_github_deploy.pub)" \
+  | ssh starter 'cat >> ~/.ssh/authorized_keys'
+```
+
+**3. DNS.** В Cloudflare записи `A @` и `A turn` → `НОВЫЙ_IP`, режим «DNS only» (серое облако).
+Сертификат HTTPS Caddy получит сам, как только домен начнёт указывать на новый сервер.
+
+**4. Мак: восстановить всё из бэкапа.** `restore.sh` возьмёт из архива `deploy/.env` (с новым
+`PUBLIC_IP`) и ключ Firebase, поднимет контейнеры, зальёт БД и включит ежедневный бэкап.
+
+```bash
+age -d -i ~/.config/starter/backup-age-key.txt ~/Downloads/starter-2026-10-03-0330.tar.gz.age \
+  | ssh starter /opt/starter/starter-backend/deploy/restore.sh
+```
+
+**5. GitHub: отпечаток нового сервера** — иначе деплой откажется к нему подключаться.
+
+```bash
+for repo in starter-backend starter-frontend; do
+  ssh-keyscan -t ed25519 call-yansburg.com 2>/dev/null | gh secret set DEPLOY_KNOWN_HOSTS -R Nikolas-Bars/$repo
+done
+gh workflow run deploy.yml -R Nikolas-Bars/starter-backend   # проверить деплой
+```
+
+**6. Проверить:** открывается https://call-yansburg.com, вход, звонок между двумя устройствами,
+`ssh starter /opt/starter/starter-backend/deploy/backup.sh` присылает бэкап в Telegram.
+Мобильное приложение ходит по домену — пересобирать его не нужно.
+
+Без бэкапа (только код): вместо шага 4 `cp .env.example .env`, заполнить его (секреты сгенерировать
+заново), положить ключ Firebase (раздел «Push-уведомления»), затем
+`docker compose up -d --build --wait && docker compose exec php php artisan migrate --force && ./backup.sh --install`.
+Данные пользователей и переписка в этом случае пропадут.
