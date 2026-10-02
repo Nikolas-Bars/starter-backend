@@ -14,6 +14,7 @@ use Laravel\Sanctum\HasApiTokens;
  * @property      int         $id
  * @property      int|null    $guest_of_id       Гость по ссылке для звонка: кто его пригласил
  * @property      string      $name              Имя пользователя
+ * @property      string|null $username          Ник для поиска (нижний регистр, без @)
  * @property      string      $email             Email, он же логин
  * @property      Carbon|null $email_verified_at Дата подтверждения email
  * @property      string      $password          Хэш пароля (bcrypt)
@@ -33,6 +34,7 @@ final class User extends Authenticatable
     protected $fillable = [
         'guest_of_id',
         'name',
+        'username',
         'email',
         'password',
     ];

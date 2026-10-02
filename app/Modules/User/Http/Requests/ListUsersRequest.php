@@ -14,7 +14,7 @@ use Illuminate\Foundation\Http\FormRequest;
  *     name="search",
  *     in="query",
  *     required=false,
- *     description="Часть имени или email",
+ *     description="Часть имени, email или ника (можно с @)",
  *     @OA\Schema(type="string", maxLength=100, example="иван")
  * )
  */
@@ -40,7 +40,8 @@ final class ListUsersRequest extends FormRequest
 
     public function toDTO(): ListUsersDTO
     {
-        $search = $this->string('search')->trim()->toString();
+        // «@ivan» ищет по нику так же, как «ivan»
+        $search = $this->string('search')->trim()->ltrim('@')->toString();
 
         return new ListUsersDTO(search: $search === '' ? null : $search);
     }

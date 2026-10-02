@@ -27,6 +27,14 @@ return [
         'not_found' => 'This call link is no longer valid. Ask for a new one.',
     ],
 
+    'chat' => [
+        'not_found'         => 'Chat not found.',
+        'invalid_peer'      => 'You cannot message this user.',
+        'message_not_found' => 'Message not found.',
+        'folder_not_found'  => 'Folder not found.',
+        'folder_limit'      => 'You can have at most 20 folders.',
+    ],
+
     'user' => [
         'guest_forbidden' => 'Not available for guests. Sign up to continue.',
     ],

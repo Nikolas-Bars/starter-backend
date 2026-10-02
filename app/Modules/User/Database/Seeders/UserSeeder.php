@@ -15,9 +15,9 @@ use Illuminate\Database\Seeder;
 final class UserSeeder extends Seeder
 {
     private const FIXED_USERS = [
-        ['name' => 'Администратор', 'email' => 'admin@example.com'],
-        ['name' => 'Иван Петров', 'email' => 'ivan@example.com'],
-        ['name' => 'Мария Смирнова', 'email' => 'maria@example.com'],
+        ['name' => 'Администратор', 'username' => 'admin', 'email' => 'admin@example.com'],
+        ['name' => 'Иван Петров', 'username' => 'ivan', 'email' => 'ivan@example.com'],
+        ['name' => 'Мария Смирнова', 'username' => 'maria', 'email' => 'maria@example.com'],
     ];
 
     private const RANDOM_USERS_COUNT = 10;
@@ -28,7 +28,7 @@ final class UserSeeder extends Seeder
             User::factory()->create($user);
         }
 
-        User::factory()->count(self::RANDOM_USERS_COUNT)->create();
+        User::factory()->count(self::RANDOM_USERS_COUNT)->withUsername()->create();
 
         $this->command->info(\sprintf(
             'Создано пользователей: %d. Пароль у всех: %s',

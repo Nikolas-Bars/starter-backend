@@ -17,6 +17,33 @@ return [
     'user_list' => [
         'search' => 'search',
     ],
+    'profile' => [
+        'name'     => 'name',
+        'username' => 'username',
+    ],
+    'chat_open' => [
+        'user_id' => 'recipient',
+    ],
+    'chat_message' => [
+        'body'      => 'message text',
+        'client_id' => 'message id',
+    ],
+    'chat_read' => [
+        'message_id' => 'message',
+    ],
+    'chat_history' => [
+        'before_id' => 'message',
+    ],
+    'chat_list' => [
+        'folder_id' => 'folder',
+        'page'      => 'page',
+    ],
+    'chat_reaction' => [
+        'emoji' => 'reaction',
+    ],
+    'chat_folder' => [
+        'name' => 'folder name',
+    ],
     'call_link_join' => [
         'name'        => 'name',
         'device_name' => 'device name',

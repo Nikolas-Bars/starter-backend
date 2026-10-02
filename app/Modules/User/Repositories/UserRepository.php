@@ -30,7 +30,7 @@ final class UserRepository extends BaseRepository
     }
 
     /**
-     * Все пользователи, кроме указанного, по имени; поиск — по вхождению в имя или email.
+     * Все пользователи, кроме указанного, по имени; поиск — по вхождению в имя, email или ник.
      *
      * @return LengthAwarePaginator<int, User>
      */
@@ -42,7 +42,7 @@ final class UserRepository extends BaseRepository
         if ($search !== null) {
             $pattern = '%' . $search . '%';
             $query->where(static function (Builder $query) use ($pattern): void {
-                $query->getQuery()->whereLike('name', $pattern)->orWhereLike('email', $pattern);
+                $query->getQuery()->whereLike('name', $pattern)->orWhereLike('email', $pattern)->orWhereLike('username', $pattern);
             });
         }
 
@@ -59,6 +59,16 @@ final class UserRepository extends BaseRepository
             'email'    => $dto->email,
             'password' => $dto->password,
         ]);
+    }
+
+    public function updateProfile(User $user, string $name, ?string $username): User
+    {
+        $user->update([
+            'name'     => $name,
+            'username' => $username,
+        ]);
+
+        return $user;
     }
 
     /**

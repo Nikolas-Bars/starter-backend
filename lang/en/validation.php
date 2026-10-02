@@ -179,8 +179,8 @@ return [
     */
 
     'custom' => [
-        'attribute-name' => [
-            'rule-name' => 'custom-message',
+        'username' => [
+            'regex' => 'Username: Latin letters, digits and _, 3 to 32 characters.',
         ],
     ],
 

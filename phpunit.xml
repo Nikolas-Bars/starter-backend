@@ -33,6 +33,7 @@
         <env name="DB_DATABASE" value=":memory:" force="true"/>
         <env name="MAIL_MAILER" value="array" force="true"/>
         <env name="QUEUE_CONNECTION" value="sync" force="true"/>
+        <env name="REALTIME_DRIVER" value="array" force="true"/>
         <env name="SESSION_DRIVER" value="array" force="true"/>
         <env name="SANCTUM_TOKEN_EXPIRATION" value="60" force="true"/>
     </php>
