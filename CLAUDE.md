@@ -63,6 +63,9 @@ also move the callee's read cursor if they had read everything, so only missed c
 Typing: the client sends `chat.typing {chat_id}` over the socket; the router checks membership
 (`ListTypingRecipientsAction`) and forwards `chat.typing {chat_id, user_id}` to the other members directly
 (not stored, not via the bus). Restart the WebSocket server after changing either.
+WebSocket Origin check (`calls.websocket.allowed_origins`): site origins (`CALL_WS_ALLOWED_ORIGINS`, falling
+back to `CORS_ALLOWED_ORIGINS`) plus the mobile app's `CALL_WS_APP_ORIGINS` (default `starter-mobile://app`,
+sent by `starter-mobile`). No site origins means the check is off.
 `chat_messages.client_id` is a native UUID column in MariaDB but plain text in the SQLite tests, so a
 non-UUID value passes the tests and fails in dev.
 

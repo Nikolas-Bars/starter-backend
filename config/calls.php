@@ -2,6 +2,8 @@
 
 declare(strict_types=1);
 
+use App\Modules\Call\WebSockets\AllowedOrigins;
+
 $csv = static fn(string $value): array => \array_values(\array_filter(\array_map('trim', \explode(',', $value))));
 
 $turnUrls = $csv((string)env('CALL_TURN_URLS', ''));
@@ -9,6 +11,11 @@ $turnUrls = $csv((string)env('CALL_TURN_URLS', ''));
 $turnSecret = (string)env('CALL_TURN_SECRET', '');
 
 $wsOrigins = $csv((string)env('CALL_WS_ALLOWED_ORIGINS', ''));
+
+$wsSiteOrigins = $wsOrigins !== [] ? $wsOrigins : $csv((string)env('CORS_ALLOWED_ORIGINS', ''));
+
+// Мобильное приложение (React Native) тоже присылает Origin — свой, не сайта
+$wsAppOrigins = $csv((string)env('CALL_WS_APP_ORIGINS', 'starter-mobile://app'));
 
 return [
     // Сколько секунд звонит вызов, прежде чем стать пропущенным
@@ -47,8 +54,8 @@ return [
         'port' => (int)env('CALL_WS_PORT', 8091),
 
         // Браузер присылает Origin при подключении: чужим сайтам открыть сокет от имени пользователя нельзя.
-        // Не задано — те же адреса, что и для CORS; пустой итоговый список отключает проверку
-        'allowed_origins' => $wsOrigins !== [] ? $wsOrigins : $csv((string)env('CORS_ALLOWED_ORIGINS', '')),
+        // Сайты не заданы — те же адреса, что и для CORS; без сайтов проверка отключена
+        'allowed_origins' => AllowedOrigins::merge($wsSiteOrigins, $wsAppOrigins),
 
         // Сервер пингует молчащие соединения и закрывает те, что не отвечают
         'ping_interval' => 25,
