@@ -66,6 +66,20 @@ Typing: the client sends `chat.typing {chat_id}` over the socket; the router che
 WebSocket Origin check (`calls.websocket.allowed_origins`): site origins (`CALL_WS_ALLOWED_ORIGINS`, falling
 back to `CORS_ALLOWED_ORIGINS`) plus the mobile app's `CALL_WS_APP_ORIGINS` (default `starter-mobile://app`,
 sent by `starter-mobile`). No site origins means the check is off.
+Push (module Push, phones only): `PUT push/devices {token}` stores an FCM token in `push_devices`, tied to the
+Sanctum token it came with (`access_token_id` cascades, so logout forgets the device; a token re-registered by
+another user moves to them). `App\Services\FcmClient` sends data-only FCM HTTP v1 messages with the service
+account key from `push.fcm.credentials` (`FCM_CREDENTIALS`, default `storage/app/firebase-credentials.json`,
+in prod `deploy/secrets/`); no key means push is off and `UserHasPushDevicesTask` is false. Tests force
+`FCM_CREDENTIALS=""`; `Tests\FakeFirebase::enable()` fakes Google with a real RSA key.
+Calls and push: the app sends `client.state {background}` over the socket. `call.invite` to a callee with no
+foreground connection but with push devices rings anyway and queues `SendCallPushJob` (incoming: `call_id`,
+`caller_name`, `decline_token`, `expires_at`); the WS loop never calls FCM itself. When the app connects it
+gets the still-ringing call as `call.incoming` (`MessageRouter::connected`). Accepting, or ending a call that
+was never answered, queues a second push (`call.ended`) that removes the notification. "Decline" in the
+notification posts `POST calls/{id}/decline {token}` without auth (HMAC of call id + callee id with the app
+key, `throttle:call-decline`); the API publishes `server.call_finished` on the RealtimeBus and the router
+sends `call.ended`. The queue worker must run for push (supervisor `queue:work`).
 `chat_messages.client_id` is a native UUID column in MariaDB but plain text in the SQLite tests, so a
 non-UUID value passes the tests and fails in dev.
 

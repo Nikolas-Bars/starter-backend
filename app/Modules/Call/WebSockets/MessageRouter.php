@@ -11,13 +11,18 @@ use App\Modules\Call\Actions\InitiateCallAction;
 use App\Modules\Call\Actions\MarkMissedCallsAction;
 use App\Modules\Call\Actions\RejectCallAction;
 use App\Modules\Call\Actions\ResumeCallAction;
+use App\Modules\Call\Enums\CallPushEventEnum;
 use App\Modules\Call\Enums\CallStatusEnum;
 use App\Modules\Call\Exceptions\InvalidCallStateException;
 use App\Modules\Call\Exceptions\NotCallParticipantException;
 use App\Modules\Call\Http\Resources\CallResource;
+use App\Modules\Call\Jobs\SendCallPushJob;
 use App\Modules\Call\Models\Call;
+use App\Modules\Call\Tasks\FindActiveCallForUserTask;
+use App\Modules\Call\Tasks\FindCallTask;
 use App\Modules\Chat\Actions\ListTypingRecipientsAction;
 use App\Modules\Chat\Actions\RecordCallInChatAction;
+use App\Modules\Push\Tasks\UserHasPushDevicesTask;
 use App\Modules\User\Models\User;
 use App\Services\RealtimeBus;
 use App\Services\Translator;
@@ -29,7 +34,8 @@ use Throwable;
  * Протокол сигнализации. Каждое сообщение — JSON вида {"type": "...", "data": {...}}.
  *
  * От клиента: ping, call.invite {callee_id}, call.accept|call.reject|call.hangup|call.resume {call_id},
- *             signal.offer|signal.answer|signal.ice {call_id, payload}, chat.typing {chat_id}.
+ *             signal.offer|signal.answer|signal.ice {call_id, payload}, chat.typing {chat_id},
+ *             client.state {background} (мобильное приложение свернули или развернули).
  * От сервера: ready, pong, call.ringing, call.incoming, call.accepted, call.resumed {call},
  *             call.ended {call, reason}, signal.* {call_id, payload},
  *             presence.snapshot {user_ids}, presence.changed {user_id, online}, error {request, message},
@@ -43,9 +49,18 @@ use Throwable;
  *
  * Если во время разговора соединение участника оборвалось, разговор ждёт его
  * calls.websocket.resume_timeout секунд: клиент переподключается и присылает call.resume.
+ *
+ * Собеседник без открытого экрана (не в сети или приложение свёрнуто), у которого есть телефон
+ * с push (модуль Push), всё равно получает вызов: push будит телефон, приложение подключается
+ * и сразу получает call.incoming. Когда вызов перестаёт звонить, второй push убирает уведомление.
  */
 final class MessageRouter
 {
+    /**
+     * Звонок завершили через API (RealtimeBus, NotifyCallFinishedTask): разослать call.ended
+     */
+    public const CALL_FINISHED_EVENT = 'server.call_finished';
+
     private const SIGNAL_TYPES = [
         'signal.offer'  => true,
         'signal.answer' => true,
@@ -68,6 +83,9 @@ final class MessageRouter
         private readonly RecordCallInChatAction $recordCallInChatAction,
         private readonly ListTypingRecipientsAction $listTypingRecipientsAction,
         private readonly RealtimeBus           $realtimeBus,
+        private readonly UserHasPushDevicesTask $userHasPushDevicesTask,
+        private readonly FindActiveCallForUserTask $findActiveCallForUserTask,
+        private readonly FindCallTask          $findCallTask,
     ) {
     }
 
@@ -89,6 +107,8 @@ final class MessageRouter
         if (\count($this->registry->forUser($user->id)) === 1) {
             $this->broadcastPresence($user, true, $connection);
         }
+
+        $this->deliverPendingIncoming($connection, $user);
     }
 
     public function handle(Connection $connection, string $raw): void
@@ -172,6 +192,12 @@ final class MessageRouter
     public function flushRealtime(int $limit): void
     {
         foreach ($this->realtimeBus->drain($limit) as $event) {
+            if ($event['message']['type'] === self::CALL_FINISHED_EVENT) {
+                $this->finishedElsewhere($event['message']['data']['call_id'] ?? null);
+
+                continue;
+            }
+
             foreach ($event['user_ids'] as $userId) {
                 $this->sendToUser($userId, $event['message']);
             }
@@ -214,6 +240,9 @@ final class MessageRouter
             case 'chat.typing':
                 $this->relayTyping($user, $this->intField($data, 'chat_id'));
                 break;
+            case 'client.state':
+                $connection->background = $this->boolField($data, 'background');
+                break;
             default:
                 throw new InvalidMessageException();
         }
@@ -224,7 +253,10 @@ final class MessageRouter
      */
     private function invite(Connection $connection, User $caller, int $calleeId): void
     {
-        $call    = $this->initiateCallAction->run($caller, $calleeId, $this->registry->isOnline($calleeId));
+        // Экран открыт — вызов увидят и так; иначе нужен push, а без телефона с push звонить некуда
+        $push = !$this->registry->isInForeground($calleeId) && $this->userHasPushDevicesTask->run($calleeId);
+
+        $call    = $this->initiateCallAction->run($caller, $calleeId, $push || $this->registry->isOnline($calleeId));
         $payload = ['call' => $this->present($call)];
 
         if ($call->status !== CallStatusEnum::Ringing) {
@@ -238,6 +270,45 @@ final class MessageRouter
 
         $connection->send(['type' => 'call.ringing', 'data' => $payload]);
         $this->sendToUser($calleeId, ['type' => 'call.incoming', 'data' => $payload]);
+
+        if ($push) {
+            dispatch(new SendCallPushJob($call->id, CallPushEventEnum::Incoming));
+        }
+    }
+
+    /**
+     * Приложение подключилось, пока ему звонят (обычно его только что разбудил push)
+     */
+    private function deliverPendingIncoming(Connection $connection, User $user): void
+    {
+        $active = $this->findActiveCallForUserTask->run($user->id);
+
+        if ($active === null || $active->status !== CallStatusEnum::Ringing || $active->callee_id !== $user->id) {
+            return;
+        }
+
+        $call = $this->findCallTask->run($active->id) ?? $active;
+
+        $connection->send(['type' => 'call.incoming', 'data' => ['call' => $this->present($call)]]);
+    }
+
+    /**
+     * Вызов перестал звонить: уведомление на телефонах собеседника больше не нужно
+     */
+    private function withdrawPush(Call $call): void
+    {
+        if ($this->userHasPushDevicesTask->run($call->callee_id)) {
+            dispatch(new SendCallPushJob($call->id, CallPushEventEnum::Ended));
+        }
+    }
+
+    private function finishedElsewhere(mixed $callId): void
+    {
+        $call = \is_int($callId) ? $this->findCallTask->run($callId) : null;
+
+        if ($call !== null && !$call->status->isOngoing()) {
+            $this->notifyEnded($call);
+        }
     }
 
     /**
@@ -257,6 +328,8 @@ final class MessageRouter
         foreach ($this->registry->forUser($callee->id) as $calleeConnection) {
             $calleeConnection->send($calleeConnection === $connection ? $accepted : $ended);
         }
+
+        $this->withdrawPush($call);
     }
 
     /**
@@ -355,6 +428,10 @@ final class MessageRouter
 
         $this->registry->releaseCall($call->id);
         $this->recordInChat($call);
+
+        if ($call->answered_at === null) {
+            $this->withdrawPush($call);
+        }
     }
 
     /**
@@ -421,6 +498,22 @@ final class MessageRouter
         $value = $data[$key] ?? null;
 
         if (!\is_int($value)) {
+            throw new InvalidMessageException();
+        }
+
+        return $value;
+    }
+
+    /**
+     * @param array<mixed> $data
+     *
+     * @throws InvalidMessageException
+     */
+    private function boolField(array $data, string $key): bool
+    {
+        $value = $data[$key] ?? null;
+
+        if (!\is_bool($value)) {
             throw new InvalidMessageException();
         }
 

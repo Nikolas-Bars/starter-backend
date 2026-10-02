@@ -10,6 +10,11 @@ services:
     image: starter-api:latest
     restart: unless-stopped
     env_file: .env
+    environment:
+      # Ключ Firebase для push (deploy/README.md, «Push-уведомления»). Нет файла — push выключены
+      FCM_CREDENTIALS: /run/secrets/starter/firebase-credentials.json
+    volumes:
+      - ./secrets:/run/secrets/starter:ro
     depends_on:
       mariadb:
         condition: service_healthy

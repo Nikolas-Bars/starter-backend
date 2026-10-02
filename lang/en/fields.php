@@ -48,4 +48,10 @@ return [
         'name'        => 'name',
         'device_name' => 'device name',
     ],
+    'push_device' => [
+        'token' => 'device token',
+    ],
+    'call_decline' => [
+        'token' => 'decline key',
+    ],
 ];

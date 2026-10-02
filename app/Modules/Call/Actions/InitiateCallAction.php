@@ -28,12 +28,12 @@ final class InitiateCallAction extends BaseAction
      * Звонок создаётся всегда — даже если собеседник не в сети или занят: такой вызов
      * сразу получает финальный статус и попадает в историю обоих пользователей.
      *
-     * @param bool $calleeOnline Есть ли у собеседника открытое соединение с сервером сигнализации
+     * @param bool $calleeReachable Собеседник в сети или его телефон можно разбудить push
      *
      * @throws InvalidCalleeException
      * @throws UserBusyException
      */
-    public function run(User $caller, int $calleeId, bool $calleeOnline): Call
+    public function run(User $caller, int $calleeId, bool $calleeReachable): Call
     {
         $callee = $calleeId === $caller->id ? null : $this->findUserByIdTask->run($calleeId);
 
@@ -41,13 +41,13 @@ final class InitiateCallAction extends BaseAction
             throw new InvalidCalleeException();
         }
 
-        return DB::transaction(function () use ($caller, $calleeId, $calleeOnline): Call {
+        return DB::transaction(function () use ($caller, $calleeId, $calleeReachable): Call {
             if ($this->findActiveCallForUserTask->run($caller->id) !== null) {
                 throw new UserBusyException();
             }
 
             $status = match (true) {
-                !$calleeOnline                                            => CallStatusEnum::Unavailable,
+                !$calleeReachable                                         => CallStatusEnum::Unavailable,
                 $this->findActiveCallForUserTask->run($calleeId) !== null => CallStatusEnum::Busy,
                 default                                                   => CallStatusEnum::Ringing,
             };

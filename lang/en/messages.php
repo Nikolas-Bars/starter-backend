@@ -13,6 +13,10 @@ return [
         'history'     => 'Call history.',
         'ice_servers' => 'Call connection settings.',
         'ws_ticket'   => 'Connection ticket issued.',
+        'declined'    => 'Call declined.',
+    ],
+    'push' => [
+        'registered' => 'Notifications enabled.',
     ],
     'call_link' => [
         'own'     => 'Your call link.',

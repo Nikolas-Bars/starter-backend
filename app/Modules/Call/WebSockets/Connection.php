@@ -29,6 +29,11 @@ final class Connection
      */
     public string $inbound = '';
 
+    /**
+     * Мобильное приложение свёрнуто (client.state): вызов ему дублируется push-уведомлением
+     */
+    public bool $background = false;
+
     public float $lastActivityAt;
 
     public float $lastPingAt;

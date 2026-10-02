@@ -4,8 +4,11 @@ declare(strict_types=1);
 
 namespace App\Modules\Call\Tests\Unit;
 
+use App\Modules\Call\Enums\CallPushEventEnum;
 use App\Modules\Call\Enums\CallStatusEnum;
+use App\Modules\Call\Jobs\SendCallPushJob;
 use App\Modules\Call\Models\Call;
+use App\Modules\Call\Tasks\SignCallDeclineTask;
 use App\Modules\Call\WebSockets\Connection;
 use App\Modules\Call\WebSockets\ConnectionRegistry;
 use App\Modules\Call\WebSockets\FrameCodec;
@@ -15,9 +18,12 @@ use App\Modules\Chat\Enums\ChatMessageTypeEnum;
 use App\Modules\Chat\Models\Chat;
 use App\Modules\Chat\Models\ChatMember;
 use App\Modules\Chat\Models\ChatMessage;
+use App\Modules\Push\Models\PushDevice;
 use App\Modules\User\Models\User;
 use App\Services\RealtimeBus;
 use Illuminate\Support\Facades\Date;
+use Illuminate\Support\Facades\Queue;
+use Tests\FakeFirebase;
 use Tests\TestCase;
 
 final class MessageRouterTest extends TestCase
@@ -425,6 +431,134 @@ final class MessageRouterTest extends TestCase
      *
      * @return array{Connection, Connection, Connection, int}
      */
+    public function testInviteRingsOfflineCalleeThroughPush(): void
+    {
+        $pushes = $this->enablePushFor($this->bob);
+        $alice  = $this->connect($this->alice);
+
+        $this->send($alice, 'call.invite', ['callee_id' => $this->bob->id]);
+
+        $ringing = $this->messages($alice);
+        self::assertSame('call.ringing', $ringing[0]['type']);
+        self::assertSame([[$this->dataPath($ringing[0], 'call.id'), CallPushEventEnum::Incoming]], $pushes());
+    }
+
+    public function testBackgroundAppGetsInviteAndPush(): void
+    {
+        $pushes = $this->enablePushFor($this->bob);
+        $alice  = $this->connect($this->alice);
+        $bob    = $this->connect($this->bob);
+        $this->send($bob, 'client.state', ['background' => true]);
+
+        $this->send($alice, 'call.invite', ['callee_id' => $this->bob->id]);
+
+        self::assertSame(['call.incoming'], $this->types($bob));
+        self::assertSame(CallPushEventEnum::Incoming, $pushes()[0][1] ?? null);
+    }
+
+    public function testCalleeWithOpenScreenIsNotPushed(): void
+    {
+        $pushes = $this->enablePushFor($this->bob);
+        $alice  = $this->connect($this->alice);
+        $bob    = $this->connect($this->bob);
+        $this->send($bob, 'client.state', ['background' => true]);
+        $this->send($bob, 'client.state', ['background' => false]);
+
+        $this->send($alice, 'call.invite', ['callee_id' => $this->bob->id]);
+
+        self::assertSame(['call.incoming'], $this->types($bob));
+        self::assertSame([], $pushes());
+    }
+
+    public function testAppWokenByPushReceivesRingingCall(): void
+    {
+        $this->enablePushFor($this->bob);
+        $alice = $this->connect($this->alice);
+        $this->send($alice, 'call.invite', ['callee_id' => $this->bob->id]);
+        $callId = $this->dataPath($this->messages($alice)[0], 'call.id');
+
+        $bob = $this->connect($this->bob, greet: true);
+
+        $incoming = \array_values(\array_filter($this->messages($bob), static fn(array $message): bool => $message['type'] === 'call.incoming'));
+        self::assertCount(1, $incoming);
+        self::assertSame($callId, $this->dataPath($incoming[0], 'call.id'));
+        self::assertSame('Алиса', $this->dataPath($incoming[0], 'call.caller.name'));
+
+        $this->send($bob, 'call.accept', ['call_id' => $callId]);
+        self::assertSame(['presence.changed', 'call.accepted'], $this->types($alice));
+    }
+
+    public function testCallerSeesNoPendingCallOnReconnect(): void
+    {
+        $this->enablePushFor($this->bob);
+        $alice = $this->connect($this->alice);
+        $this->send($alice, 'call.invite', ['callee_id' => $this->bob->id]);
+
+        $aliceTab = $this->connect($this->alice, greet: true);
+
+        self::assertNotContains('call.incoming', $this->types($aliceTab));
+    }
+
+    public function testNotificationIsWithdrawnWhenCallStopsRinging(): void
+    {
+        $pushes = $this->enablePushFor($this->bob);
+        $alice  = $this->connect($this->alice);
+        $this->send($alice, 'call.invite', ['callee_id' => $this->bob->id]);
+        $callId = $this->dataPath($this->messages($alice)[0], 'call.id');
+
+        $this->send($alice, 'call.hangup', ['call_id' => $callId]);
+
+        self::assertSame([[$callId, CallPushEventEnum::Incoming], [$callId, CallPushEventEnum::Ended]], $pushes());
+    }
+
+    public function testCallDeclinedFromNotificationEndsForCaller(): void
+    {
+        $this->enablePushFor($this->bob);
+        $alice = $this->connect($this->alice);
+        $this->send($alice, 'call.invite', ['callee_id' => $this->bob->id]);
+        $callId = $this->dataPath($this->messages($alice)[0], 'call.id');
+        self::assertIsInt($callId);
+
+        $call  = Call::query()->findOrFail($callId);
+        $token = $this->app->make(SignCallDeclineTask::class)->run($call);
+        $this->postJson('/api/calls/' . $callId . '/decline', ['token' => $token])->assertOk();
+
+        $this->router->flushRealtime(100);
+
+        $ended = $this->messages($alice);
+        self::assertSame('call.ended', $ended[0]['type']);
+        self::assertSame('rejected', $this->dataPath($ended[0], 'reason'));
+        self::assertSame(1, ChatMessage::query()->where('call_id', $callId)->count());
+    }
+
+    public function testClientStateRequiresBoolean(): void
+    {
+        $bob = $this->connect($this->bob);
+
+        $this->send($bob, 'client.state', ['background' => 'yes']);
+
+        self::assertSame(['error'], $this->types($bob));
+        self::assertFalse($bob->background);
+    }
+
+    /**
+     * У пользователя есть телефон с push, а Firebase «настроен». Возвращает функцию, которая отдаёт
+     * отправленные в очередь push о звонках: [[call_id, событие], ...]
+     *
+     * @return callable(): list<array{int, CallPushEventEnum}>
+     */
+    private function enablePushFor(User $user): callable
+    {
+        Queue::fake();
+        FakeFirebase::enable();
+        PushDevice::factory()->create(['user_id' => $user->id]);
+
+        return static fn(): array => Queue::pushed(SendCallPushJob::class)
+            ->map(static fn(SendCallPushJob $job): array => [$job->callId, $job->event])
+            ->values()
+            ->all();
+    }
+
     private function ringBobOnTwoTabs(): array
     {
         $alice     = $this->connect($this->alice);

@@ -106,6 +106,20 @@ final class ConnectionRegistry
     }
 
     /**
+     * Пользователь увидит вызов на экране: хотя бы одна вкладка или приложение не свёрнуты
+     */
+    public function isInForeground(int $userId): bool
+    {
+        foreach ($this->byUser[$userId] ?? [] as $connection) {
+            if (!$connection->background) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
      * @return list<int>
      */
     public function onlineUserIds(): array

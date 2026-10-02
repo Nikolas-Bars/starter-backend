@@ -66,6 +66,19 @@ ssh starter /opt/starter/starter-backend/deploy/deploy.sh
 
 Или кнопкой Run workflow во вкладке Actions → Deploy.
 
+## Push-уведомления
+
+Входящие звонки на телефон при закрытом приложении идут через Firebase Cloud Messaging. Ключ сервисного
+аккаунта (Firebase → «Настройки проекта» → «Сервисные аккаунты» → «Создать закрытый ключ») — секрет,
+в git его нет. Он лежит на сервере в `deploy/secrets/` и монтируется в контейнер только для чтения:
+
+```bash
+scp firebase-credentials.json starter:/opt/starter/starter-backend/deploy/secrets/
+ssh starter 'chmod 600 /opt/starter/starter-backend/deploy/secrets/firebase-credentials.json && cd /opt/starter/starter-backend/deploy && docker compose restart php'
+```
+
+Без файла push выключены, а звонок собеседнику не в сети сразу завершается как «не в сети».
+
 ## Частые команды
 
 ```bash
