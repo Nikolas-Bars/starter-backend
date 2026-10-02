@@ -107,6 +107,24 @@ age -d -i ~/.config/starter/backup-age-key.txt ~/Downloads/starter-2026-10-03-03
 Посмотреть, что внутри архива: `age -d -i ~/.config/starter/backup-age-key.txt файл.tar.gz.age | tar -tzv`.
 Сделать бэкап вручную: `ssh starter /opt/starter/starter-backend/deploy/backup.sh`.
 
+## База из DBeaver
+
+MariaDB слушает только `127.0.0.1:3306` на сервере, снаружи до неё не достучаться — подключение
+идёт через SSH-туннель.
+
+- Main: Host `127.0.0.1`, Port `3306`, Database `starter`, Username `dbeaver`, пароль — в
+  `~/.config/starter/dbeaver-password.txt` на Маке (`pbcopy < ~/.config/starter/dbeaver-password.txt`).
+- SSH: Host `call-yansburg.com`, Port `22`, User `root`, Authentication «Public Key»,
+  ключ `~/.ssh/starter_server`.
+
+У пользователя `dbeaver` полный доступ к базе `starter`: правки сразу видны на проде. Он живёт в
+системной базе MariaDB и в бэкап не попадает — после переезда создать заново (этой же командой
+меняется пароль):
+
+```bash
+ssh starter /opt/starter/starter-backend/deploy/dbeaver-user.sh < ~/.config/starter/dbeaver-password.txt
+```
+
 ## Частые команды
 
 ```bash
