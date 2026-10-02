@@ -73,9 +73,13 @@ ssh starter /opt/starter/starter-backend/deploy/deploy.sh
 в git его нет. Он лежит на сервере в `deploy/secrets/` и монтируется в контейнер только для чтения:
 
 ```bash
+ssh starter 'mkdir -p /opt/starter/starter-backend/deploy/secrets'
 scp firebase-credentials.json starter:/opt/starter/starter-backend/deploy/secrets/
-ssh starter 'chmod 600 /opt/starter/starter-backend/deploy/secrets/firebase-credentials.json && cd /opt/starter/starter-backend/deploy && docker compose restart php'
+ssh starter 'cd /opt/starter/starter-backend/deploy && chmod 700 secrets && chmod 600 secrets/firebase-credentials.json && chown -R 33:33 secrets && docker compose restart php'
 ```
+
+Владелец — `www-data` контейнера (uid 33): от него работают очередь и сервер звонков. Файл root с правами
+600 они не прочитают, и push молча выключатся.
 
 Без файла push выключены, а звонок собеседнику не в сети сразу завершается как «не в сети».
 
