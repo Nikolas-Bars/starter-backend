@@ -17,4 +17,8 @@ return [
     'user_list' => [
         'search' => 'search',
     ],
+    'call_link_join' => [
+        'name'        => 'name',
+        'device_name' => 'device name',
+    ],
 ];

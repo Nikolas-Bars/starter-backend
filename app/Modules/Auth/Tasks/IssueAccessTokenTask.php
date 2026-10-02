@@ -18,9 +18,12 @@ final class IssueAccessTokenTask extends BaseTask
     ) {
     }
 
-    public function run(User $user, string $deviceName): AuthTokenDTO
+    /**
+     * @param int|null $ttlMinutes Срок жизни этого токена; без него действует sanctum.expiration
+     */
+    public function run(User $user, string $deviceName, ?int $ttlMinutes = null): AuthTokenDTO
     {
-        $expiresAt = $this->expiresAt();
+        $expiresAt = $ttlMinutes === null ? $this->expiresAt() : Date::now()->addMinutes($ttlMinutes);
         $token     = $this->repository->issue($user, $deviceName, $expiresAt);
 
         return new AuthTokenDTO(

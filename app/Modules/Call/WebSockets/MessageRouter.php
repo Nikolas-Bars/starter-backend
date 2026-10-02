@@ -33,6 +33,8 @@ use JsonException;
  * Звонок меняет состояние только через Actions; offer/answer/ICE в БД не пишутся,
  * а пересылаются собеседнику как есть.
  *
+ * Гость по ссылке для звонка (User::isGuest) видит в сети и может вызвать только владельца ссылки.
+ *
  * Если во время разговора соединение участника оборвалось, разговор ждёт его
  * calls.websocket.resume_timeout секунд: клиент переподключается и присылает call.resume.
  */
@@ -73,10 +75,10 @@ final class MessageRouter
         }
 
         $connection->send(['type' => 'ready', 'data' => ['user_id' => $user->id]]);
-        $connection->send(['type' => 'presence.snapshot', 'data' => ['user_ids' => $this->registry->onlineUserIds()]]);
+        $connection->send(['type' => 'presence.snapshot', 'data' => ['user_ids' => $this->visibleOnlineUserIds($user)]]);
 
         if (\count($this->registry->forUser($user->id)) === 1) {
-            $this->broadcastPresence($user->id, true, $connection);
+            $this->broadcastPresence($user, true, $connection);
         }
     }
 
@@ -122,7 +124,7 @@ final class MessageRouter
         }
 
         if (!$this->registry->isOnline($user->id)) {
-            $this->broadcastPresence($user->id, false);
+            $this->broadcastPresence($user, false);
         }
 
         if ($callId === null) {
@@ -254,15 +256,36 @@ final class MessageRouter
         }
     }
 
-    private function broadcastPresence(int $userId, bool $online, ?Connection $except = null): void
+    /**
+     * Гость по ссылке и владелец ссылки видят в сети только друг друга (User::canContact).
+     */
+    private function broadcastPresence(User $subject, bool $online, ?Connection $except = null): void
     {
-        $message = ['type' => 'presence.changed', 'data' => ['user_id' => $userId, 'online' => $online]];
+        $message = ['type' => 'presence.changed', 'data' => ['user_id' => $subject->id, 'online' => $online]];
 
         foreach ($this->registry->authenticated() as $connection) {
-            if ($connection !== $except) {
+            if ($connection !== $except && $connection->user?->canContact($subject) === true) {
                 $connection->send($message);
             }
         }
+    }
+
+    /**
+     * @return list<int>
+     */
+    private function visibleOnlineUserIds(User $viewer): array
+    {
+        $userIds = [];
+
+        foreach ($this->registry->authenticated() as $connection) {
+            $online = $connection->user;
+
+            if ($online !== null && $viewer->canContact($online)) {
+                $userIds[$online->id] = $online->id;
+            }
+        }
+
+        return \array_values($userIds);
     }
 
     /**

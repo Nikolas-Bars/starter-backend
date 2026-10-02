@@ -18,4 +18,8 @@ return [
     'user_list' => [
         'search' => 'поиск',
     ],
+    'call_link_join' => [
+        'name'        => 'имя',
+        'device_name' => 'название устройства',
+    ],
 ];

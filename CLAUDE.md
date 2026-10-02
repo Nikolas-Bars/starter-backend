@@ -30,6 +30,11 @@ Modules: User (model, factory, seeder, repository, user list), Auth (register, l
 Call (1-on-1 video calls: call history, ICE servers, own WebSocket signaling server in `Call/WebSockets/`,
 started by `php artisan call:ws-serve` under supervisor; restart it after code changes with `make ws-restart`).
 Media goes peer-to-peer over WebRTC; the server only relays JSON signaling messages and records call statuses.
+CallLink (personal permanent "call me" link: `GET call-link`, `POST call-link/rotate`, public
+`GET call-links/{code}` and `POST call-links/{code}/join`). Joining creates a guest — a `users` row with
+`guest_of_id` = link owner and a short-lived token (`calls.links.guest_token_ttl`). Guests are never deleted
+(calls cascade on user delete). `User::canContact()` is the single rule: a guest and their host can call and
+see each other online, nobody else. Endpoints guests must not use get the `not_guest` middleware.
 
 Call chain: Controller → Action → Task → Repository. Controllers call exactly one Action; Actions never
 call other Actions (use SubActions); Tasks never call Actions; Repositories are used only from

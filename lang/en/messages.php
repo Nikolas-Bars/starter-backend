@@ -14,6 +14,12 @@ return [
         'ice_servers' => 'Call connection settings.',
         'ws_ticket'   => 'Connection ticket issued.',
     ],
+    'call_link' => [
+        'own'     => 'Your call link.',
+        'rotated' => 'Link reissued: the old one no longer works.',
+        'show'    => 'Call link.',
+        'joined'  => 'You can call now.',
+    ],
     'user' => [
         'list' => 'User list.',
     ],

@@ -18,7 +18,7 @@ use Spatie\RouteAttributes\Attributes\Get;
  * @OA\Get(
  *     path="/api/users",
  *     summary="Список пользователей",
- *     description="Все пользователи, кроме текущего, по алфавиту. По 20 на страницу.",
+ *     description="Все пользователи, кроме текущего и гостей по ссылкам, по алфавиту. По 20 на страницу. Гостям недоступно.",
  *     tags={"Пользователи"},
  *     security={{"sanctum": {}}},
  *     @OA\Parameter(ref="#/components/parameters/ListUsersRequest.search"),
@@ -40,12 +40,13 @@ use Spatie\RouteAttributes\Attributes\Get;
  *         )
  *     ),
  *     @OA\Response(response=401, ref="#/components/responses/Unauthorized"),
+ *     @OA\Response(response=403, ref="#/components/responses/User.GuestNotAllowedException"),
  *     @OA\Response(response=422, ref="#/components/responses/ValidationError")
  * )
  */
 final class ListUsersController extends BaseController
 {
-    #[Get('users', middleware: 'auth:sanctum')]
+    #[Get('users', middleware: ['auth:sanctum', 'not_guest'])]
     public function __invoke(ListUsersRequest $request, ListUsersAction $action): JsonResponse
     {
         /** @var User $user */

@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use App\Exceptions\ApiException;
+use App\Http\Middleware\DenyGuests;
 use App\Http\Middleware\ForceJsonResponse;
 use App\Http\Middleware\SetLocale;
 use App\Services\ApiResponder;
@@ -30,6 +31,8 @@ return Application::configure(basePath: $_ENV['APP_BASE_PATH'] ?? dirname(__DIR_
             SetLocale::class,
             SubstituteBindings::class,
         ]);
+
+        $middleware->alias(['not_guest' => DenyGuests::class]);
     })
     ->withExceptions(static function (Exceptions $exceptions): void {
         $exceptions->shouldRenderJsonWhen(static fn(Request $request): bool => $request->is('api/*') || $request->expectsJson());

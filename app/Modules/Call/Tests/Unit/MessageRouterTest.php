@@ -267,6 +267,45 @@ final class MessageRouterTest extends TestCase
         self::assertSame('busy', $this->dataPath($this->messages($carol)[0], 'reason'));
     }
 
+    public function testGuestCanCallOnlyLinkOwnerAndOwnerCanCallBack(): void
+    {
+        $guestUser = User::factory()->create(['guest_of_id' => $this->bob->id]);
+        $guest     = $this->connect($guestUser);
+        $bob       = $this->connect($this->bob);
+        $alice     = $this->connect($this->alice);
+
+        $this->send($guest, 'call.invite', ['callee_id' => $this->alice->id]);
+        self::assertSame('Нельзя позвонить этому пользователю.', $this->dataPath($this->messages($guest)[0], 'message'));
+        self::assertSame([], $this->messages($alice));
+
+        $this->send($alice, 'call.invite', ['callee_id' => $guestUser->id]);
+        self::assertSame(['error'], $this->types($alice), 'Чужого гостя вызвать нельзя');
+
+        $this->send($guest, 'call.invite', ['callee_id' => $this->bob->id]);
+        self::assertSame(['call.ringing'], $this->types($guest));
+        self::assertSame(true, $this->dataPath($this->messages($bob)[0], 'call.caller.is_guest'));
+    }
+
+    public function testGuestAndOwnerSeeOnlyEachOtherOnline(): void
+    {
+        $alice = $this->connect($this->alice, greet: true);
+        $bob   = $this->connect($this->bob, greet: true);
+        $this->drain($alice, $bob);
+
+        $guest = $this->connect(User::factory()->create(['guest_of_id' => $this->bob->id]), greet: true);
+
+        self::assertSame([$this->bob->id], $this->dataPath($this->messages($guest)[1], 'user_ids'));
+        self::assertSame(['presence.changed'], $this->types($bob));
+        self::assertSame([], $this->messages($alice));
+
+        $carol = $this->connect(User::factory()->create(), greet: true);
+        self::assertEqualsCanonicalizing(
+            [$this->alice->id, $this->bob->id, $carol->user?->id],
+            $this->dataPath($this->messages($carol)[1], 'user_ids'),
+        );
+        self::assertSame([], $this->messages($guest), 'Гость не узнаёт о других пользователях');
+    }
+
     public function testRepliesWithLocalizedErrorToBadMessages(): void
     {
         $alice = $this->connect($this->alice);
