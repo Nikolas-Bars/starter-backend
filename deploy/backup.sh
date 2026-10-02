@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
-# Бэкап БД: сжатый и зашифрованный (age) дамп в /var/backups/starter, хранятся последние KEEP_DAYS дней.
-# Копия уходит в Telegram, если в deploy/.env заданы BACKUP_TELEGRAM_BOT_TOKEN и BACKUP_TELEGRAM_CHAT_ID.
+# Бэкап всего, что нельзя взять из git: дамп БД, deploy/.env и ключ Firebase в одном архиве,
+# зашифрованном age. Кладётся в /var/backups/starter (хранятся последние KEEP_DAYS дней) и уходит
+# в Telegram, если в deploy/.env заданы BACKUP_TELEGRAM_BOT_TOKEN и BACKUP_TELEGRAM_CHAT_ID.
+# Восстановление, в том числе на новом сервере, — deploy/restore.sh.
 #   ./backup.sh            — сделать бэкап сейчас
 #   ./backup.sh --install  — поставить age и делать бэкап каждый день в 03:30 по времени сервера (cron)
 set -euo pipefail
@@ -32,16 +34,23 @@ fi
 umask 077
 mkdir -p "$BACKUP_DIR"
 
-file="$BACKUP_DIR/starter-$(date +%F-%H%M).sql.gz.age"
-trap 'rm -f "$file.tmp"' EXIT
+file="$BACKUP_DIR/starter-$(date +%F-%H%M).tar.gz.age"
+work=$(mktemp -d)
+trap 'rm -rf "$work" "$file.tmp"' EXIT
 
 # Пароль берётся из окружения контейнера и не попадает в аргументы команды
 docker compose exec -T mariadb sh -c \
     'MYSQL_PWD="$MARIADB_ROOT_PASSWORD" exec mariadb-dump -uroot --single-transaction --routines --triggers "$MARIADB_DATABASE"' \
-    | gzip | age -r "$recipient" > "$file.tmp"
+    > "$work/database.sql"
+cp .env "$work/env"
+if [[ -f secrets/firebase-credentials.json ]]; then
+    cp secrets/firebase-credentials.json "$work/"
+fi
+
+tar -C "$work" -czf - . | age -r "$recipient" > "$file.tmp"
 mv "$file.tmp" "$file"
 
-find "$BACKUP_DIR" -name 'starter-*.sql.gz*' -mtime +"$KEEP_DAYS" -delete
+find "$BACKUP_DIR" -name 'starter-*.age' -mtime +"$KEEP_DAYS" -delete
 echo "$(date '+%F %T') $file $(du -h "$file" | cut -f1)"
 
 token=$(env_value BACKUP_TELEGRAM_BOT_TOKEN)

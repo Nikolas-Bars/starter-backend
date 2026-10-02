@@ -25,4 +25,4 @@ jobs:
           printf '%s\n' "$SSH_KEY" > ~/.ssh/deploy_key
           printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts
           chmod 600 ~/.ssh/deploy_key
-          ssh -i ~/.ssh/deploy_key -o IdentitiesOnly=yes root@185.17.1.109 deploy
+          ssh -i ~/.ssh/deploy_key -o IdentitiesOnly=yes root@call-yansburg.com deploy
