@@ -15,6 +15,7 @@ use Illuminate\Http\Resources\Json\JsonResource;
  *     description="Пользователь",
  *     @OA\Property(property="id", type="integer", example=1),
  *     @OA\Property(property="name", type="string", example="Иван Петров"),
+ *     @OA\Property(property="username", type="string", nullable=true, example="ivan_petrov", description="Ник без @"),
  *     @OA\Property(property="email", type="string", format="email", example="ivan@example.com"),
  *     @OA\Property(property="email_verified_at", type="string", format="date-time", nullable=true),
  *     @OA\Property(property="created_at", type="string", format="date-time", nullable=true),
@@ -33,6 +34,7 @@ final class UserResource extends JsonResource
         return [
             'id'                => $this->id,
             'name'              => $this->name,
+            'username'          => $this->username,
             'email'             => $this->email,
             'email_verified_at' => $this->email_verified_at?->toIso8601String(),
             'created_at'        => $this->created_at?->toIso8601String(),

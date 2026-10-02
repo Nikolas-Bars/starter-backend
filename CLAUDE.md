@@ -35,6 +35,36 @@ CallLink (personal permanent "call me" link: `GET call-link`, `POST call-link/ro
 `guest_of_id` = link owner and a short-lived token (`calls.links.guest_token_ttl`). Guests are never deleted
 (calls cascade on user delete). `User::canContact()` is the single rule: a guest and their host can call and
 see each other online, nobody else. Endpoints guests must not use get the `not_guest` middleware.
+User also owns the profile: `PATCH profile` (name + optional unique `username`, lowercase `[a-z0-9_]{3,32}`);
+`GET users?search=` matches name, email or username (a leading `@` is ignored).
+Chat (messenger, 1-on-1 for now; the schema is ready for groups: `chats` + `chat_members` + `chat_messages`).
+Writes go through REST: `GET chats`, `GET chats/{id}`, `POST chats/direct {user_id}` (find or create),
+`GET chats/{id}/messages?before_id=` (50 per page, oldest first, `has_more`), `POST chats/{id}/messages
+{body, client_id}` (client-chosen UUID makes retries idempotent), `POST chats/{id}/read {message_id}`.
+Read state is a per-member cursor `chat_members.last_read_message_id` (only moves forward); unread counts and
+"read" ticks are derived from it. Guests do not use chats (`not_guest`) and cannot be chat peers.
+Reactions: `PUT|DELETE chats/{id}/messages/{messageId}/reaction {emoji}` — one per user per message (a new one
+replaces it), emoji from `ChatReactionEnum` (mirrored in the frontend); messages carry `reactions:
+[{emoji, user_ids}]`. Folders are private to their owner: `GET|POST chat-folders`, `PATCH|DELETE
+chat-folders/{id}`, `PUT|DELETE chat-folders/{id}/chats/{chatId}`, max 20; `GET chats?folder_id=` filters
+the list; a folder carries `chat_ids` and `unread_chats_count`.
+
+Realtime from the API to browsers: HTTP workers cannot see open sockets, so Actions publish events to
+`App\Services\RealtimeBus` (a Redis list, `config/realtime.php`; the `array` driver keeps them in memory for
+tests) after the transaction commits. The WebSocket server drains the bus every loop (`socket_select` waits at
+most 0.1 s) and `MessageRouter::flushRealtime()` sends each event to every tab of its `user_ids`.
+Chat events: `chat.message {message}`, `chat.read {chat_id, user_id, last_read_message_id, unread_count}`,
+`chat.reaction {chat_id, message_id, reactions}`, `chat.folders` (no data, only to the owner: refetch folders).
+Calls in chat: when a call reaches a final status, `MessageRouter` runs `RecordCallInChatAction`, which adds
+a `type = call` message (author = caller, empty body, `call_id`; the resource exposes `call {id, status,
+duration_seconds}`) to the participants' direct chat, creating it if needed. Calls with guests are not
+recorded. `client_id` is a UUID v5 of the call id, so recording twice is a no-op. Answered or rejected calls
+also move the callee's read cursor if they had read everything, so only missed calls show as unread.
+Typing: the client sends `chat.typing {chat_id}` over the socket; the router checks membership
+(`ListTypingRecipientsAction`) and forwards `chat.typing {chat_id, user_id}` to the other members directly
+(not stored, not via the bus). Restart the WebSocket server after changing either.
+`chat_messages.client_id` is a native UUID column in MariaDB but plain text in the SQLite tests, so a
+non-UUID value passes the tests and fails in dev.
 
 Call chain: Controller → Action → Task → Repository. Controllers call exactly one Action; Actions never
 call other Actions (use SubActions); Tasks never call Actions; Repositories are used only from

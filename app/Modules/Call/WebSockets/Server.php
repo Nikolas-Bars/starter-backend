@@ -24,6 +24,11 @@ final class Server
     private const HOUSEKEEPING_INTERVAL = 1.0;
 
     /**
+     * select ждёт не дольше 0,1 с: столько максимум лежит в RealtimeBus событие от API
+     */
+    private const SELECT_TIMEOUT_US = 100_000;
+
+    /**
      * Сколько секунд даём клиенту на рукопожатие
      */
     private const HANDSHAKE_TIMEOUT = 10.0;
@@ -112,7 +117,7 @@ final class Server
         }
 
         $except  = null;
-        $changed = @\socket_select($read, $write, $except, 1);
+        $changed = @\socket_select($read, $write, $except, 0, self::SELECT_TIMEOUT_US);
 
         if ($changed === false) {
             // Сигнал прерывает select — это штатная остановка, а не ошибка
@@ -146,7 +151,17 @@ final class Server
             }
         }
 
+        $this->flushRealtime();
         $this->housekeeping(\microtime(true));
+    }
+
+    private function flushRealtime(): void
+    {
+        try {
+            $this->router->flushRealtime(Config::integer('realtime.batch_size'));
+        } catch (Throwable $exception) {
+            report($exception);
+        }
     }
 
     private function listen(string $host, int $port): Socket

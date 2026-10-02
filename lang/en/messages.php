@@ -20,7 +20,24 @@ return [
         'show'    => 'Call link.',
         'joined'  => 'You can call now.',
     ],
+    'chat' => [
+        'list'             => 'Chat list.',
+        'show'             => 'Chat.',
+        'opened'           => 'Chat opened.',
+        'messages'         => 'Chat messages.',
+        'sent'             => 'Message sent.',
+        'read'             => 'Messages marked as read.',
+        'reacted'          => 'Reaction saved.',
+        'reaction_removed' => 'Reaction removed.',
+    ],
+    'chat_folder' => [
+        'list'    => 'Chat folders.',
+        'created' => 'Folder created.',
+        'updated' => 'Folder saved.',
+        'deleted' => 'Folder deleted.',
+    ],
     'user' => [
-        'list' => 'User list.',
+        'list'            => 'User list.',
+        'profile_updated' => 'Profile saved.',
     ],
 ];

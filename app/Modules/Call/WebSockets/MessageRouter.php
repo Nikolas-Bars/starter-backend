@@ -16,22 +16,28 @@ use App\Modules\Call\Exceptions\InvalidCallStateException;
 use App\Modules\Call\Exceptions\NotCallParticipantException;
 use App\Modules\Call\Http\Resources\CallResource;
 use App\Modules\Call\Models\Call;
+use App\Modules\Chat\Actions\ListTypingRecipientsAction;
+use App\Modules\Chat\Actions\RecordCallInChatAction;
 use App\Modules\User\Models\User;
+use App\Services\RealtimeBus;
 use App\Services\Translator;
 use Illuminate\Support\Facades\Config;
 use JsonException;
+use Throwable;
 
 /**
  * Протокол сигнализации. Каждое сообщение — JSON вида {"type": "...", "data": {...}}.
  *
  * От клиента: ping, call.invite {callee_id}, call.accept|call.reject|call.hangup|call.resume {call_id},
- *             signal.offer|signal.answer|signal.ice {call_id, payload}.
+ *             signal.offer|signal.answer|signal.ice {call_id, payload}, chat.typing {chat_id}.
  * От сервера: ready, pong, call.ringing, call.incoming, call.accepted, call.resumed {call},
  *             call.ended {call, reason}, signal.* {call_id, payload},
- *             presence.snapshot {user_ids}, presence.changed {user_id, online}, error {request, message}.
+ *             presence.snapshot {user_ids}, presence.changed {user_id, online}, error {request, message},
+ *             chat.typing {chat_id, user_id},
+ *             а также события из RealtimeBus (chat.message, chat.read — см. модуль Chat).
  *
  * Звонок меняет состояние только через Actions; offer/answer/ICE в БД не пишутся,
- * а пересылаются собеседнику как есть.
+ * а пересылаются собеседнику как есть. Завершённый звонок записывается в личный чат участников.
  *
  * Гость по ссылке для звонка (User::isGuest) видит в сети и может вызвать только владельца ссылки.
  *
@@ -59,6 +65,9 @@ final class MessageRouter
         private readonly EndCallAction         $endCallAction,
         private readonly MarkMissedCallsAction $markMissedCallsAction,
         private readonly ResumeCallAction      $resumeCallAction,
+        private readonly RecordCallInChatAction $recordCallInChatAction,
+        private readonly ListTypingRecipientsAction $listTypingRecipientsAction,
+        private readonly RealtimeBus           $realtimeBus,
     ) {
     }
 
@@ -157,6 +166,19 @@ final class MessageRouter
     }
 
     /**
+     * События, которые API положило в RealtimeBus (например, новое сообщение в чате),
+     * уходят во все вкладки адресатов, что сейчас в сети.
+     */
+    public function flushRealtime(int $limit): void
+    {
+        foreach ($this->realtimeBus->drain($limit) as $event) {
+            foreach ($event['user_ids'] as $userId) {
+                $this->sendToUser($userId, $event['message']);
+            }
+        }
+    }
+
+    /**
      * @param array<mixed> $data
      *
      * @throws ApiException
@@ -189,6 +211,9 @@ final class MessageRouter
             case 'call.resume':
                 $this->resume($connection, $user, $this->intField($data, 'call_id'));
                 break;
+            case 'chat.typing':
+                $this->relayTyping($user, $this->intField($data, 'chat_id'));
+                break;
             default:
                 throw new InvalidMessageException();
         }
@@ -204,6 +229,7 @@ final class MessageRouter
 
         if ($call->status !== CallStatusEnum::Ringing) {
             $connection->send(['type' => 'call.ended', 'data' => $payload + ['reason' => $call->status->value]]);
+            $this->recordInChat($call);
 
             return;
         }
@@ -328,6 +354,37 @@ final class MessageRouter
         }
 
         $this->registry->releaseCall($call->id);
+        $this->recordInChat($call);
+    }
+
+    /**
+     * Сообщение о звонке в чате — дополнение: если записать не вышло, сигнализация продолжает работать
+     */
+    private function recordInChat(Call $call): void
+    {
+        try {
+            $this->recordCallInChatAction->run($call);
+        } catch (Throwable $exception) {
+            report($exception);
+        }
+    }
+
+    /**
+     * «Печатает» шлётся часто и ничего не меняет: чужой или несуществующий чат молча игнорируем
+     */
+    private function relayTyping(User $user, int $chatId): void
+    {
+        try {
+            $recipients = $this->listTypingRecipientsAction->run($user, $chatId);
+        } catch (ApiException) {
+            return;
+        }
+
+        $message = ['type' => ListTypingRecipientsAction::EVENT, 'data' => ['chat_id' => $chatId, 'user_id' => $user->id]];
+
+        foreach ($recipients as $userId) {
+            $this->sendToUser($userId, $message);
+        }
     }
 
     /**

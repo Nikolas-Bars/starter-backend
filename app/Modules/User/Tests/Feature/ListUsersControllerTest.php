@@ -42,6 +42,20 @@ final class ListUsersControllerTest extends TestCase
             ->assertJsonPath('data.items.0.name', 'Мария');
     }
 
+    public function testSearchesByUsernameWithOrWithoutAt(): void
+    {
+        $this->actingAsUser();
+        User::factory()->create(['name' => 'Иван Петров', 'username' => 'vanya']);
+        User::factory()->create(['name' => 'Мария', 'username' => 'masha']);
+
+        foreach (['vanya', '@vanya'] as $search) {
+            $this->getJson('/api/users?' . \http_build_query(['search' => $search]))
+                ->assertOk()
+                ->assertJsonCount(1, 'data.items')
+                ->assertJsonPath('data.items.0.username', 'vanya');
+        }
+    }
+
     public function testHidesGuestsAndIsClosedForThem(): void
     {
         $host = $this->actingAsUser();

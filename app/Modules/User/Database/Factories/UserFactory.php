@@ -7,6 +7,7 @@ namespace App\Modules\User\Database\Factories;
 use App\Modules\User\Models\User;
 use Illuminate\Database\Eloquent\Factories\Factory;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Str;
 
 /**
  * @extends Factory<User>
@@ -32,6 +33,16 @@ final class UserFactory extends Factory
             'email_verified_at' => now(),
             'password'          => self::$passwordHash ??= Hash::make(self::DEFAULT_PASSWORD),
         ];
+    }
+
+    /**
+     * Ник из латиницы, цифр и _, как требует профиль
+     */
+    public function withUsername(): static
+    {
+        return $this->state(static fn(): array => [
+            'username' => Str::of(fake('en_US')->unique()->userName())->lower()->replaceMatches('/[^a-z0-9_]/', '_')->limit(32, '')->toString(),
+        ]);
     }
 
     public function unverified(): static

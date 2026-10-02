@@ -10,7 +10,13 @@ use App\Modules\Call\WebSockets\Connection;
 use App\Modules\Call\WebSockets\ConnectionRegistry;
 use App\Modules\Call\WebSockets\FrameCodec;
 use App\Modules\Call\WebSockets\MessageRouter;
+use App\Modules\Chat\Actions\RecordCallInChatAction;
+use App\Modules\Chat\Enums\ChatMessageTypeEnum;
+use App\Modules\Chat\Models\Chat;
+use App\Modules\Chat\Models\ChatMember;
+use App\Modules\Chat\Models\ChatMessage;
 use App\Modules\User\Models\User;
+use App\Services\RealtimeBus;
 use Illuminate\Support\Facades\Date;
 use Tests\TestCase;
 
@@ -284,6 +290,100 @@ final class MessageRouterTest extends TestCase
         $this->send($guest, 'call.invite', ['callee_id' => $this->bob->id]);
         self::assertSame(['call.ringing'], $this->types($guest));
         self::assertSame(true, $this->dataPath($this->messages($bob)[0], 'call.caller.is_guest'));
+    }
+
+    public function testAnsweredCallIsRecordedInChatAndStaysRead(): void
+    {
+        [$alice, $bobLaptop, $bobPhone, $callId] = $this->ringBobOnTwoTabs();
+        $this->send($bobLaptop, 'call.accept', ['call_id' => $callId]);
+        $this->travel(65)->seconds();
+        $this->send($alice, 'call.hangup', ['call_id' => $callId]);
+        $this->drain($alice, $bobLaptop, $bobPhone);
+
+        $this->router->flushRealtime(10);
+
+        $bobEvents = $this->messages($bobPhone);
+        self::assertSame(['chat.message', 'chat.read', 'chat.read'], \array_column($bobEvents, 'type'));
+        self::assertSame('call', $this->dataPath($bobEvents[0], 'message.type'));
+        self::assertSame($this->alice->id, $this->dataPath($bobEvents[0], 'message.user_id'));
+        self::assertSame(['id' => $callId, 'status' => 'ended', 'duration_seconds' => 65], $this->dataPath($bobEvents[0], 'message.call'));
+        self::assertSame($this->bob->id, $this->dataPath($bobEvents[2], 'user_id'));
+        self::assertSame(0, $this->dataPath($bobEvents[2], 'unread_count'));
+        self::assertSame(['chat.message', 'chat.read', 'chat.read'], $this->types($alice));
+    }
+
+    public function testMissedCallIsUnreadForCalleeAndRecordedOnce(): void
+    {
+        $alice = $this->connect($this->alice);
+
+        $this->send($alice, 'call.invite', ['callee_id' => $this->bob->id]);
+        $this->drain($alice);
+
+        $message = ChatMessage::query()->sole();
+        self::assertSame(ChatMessageTypeEnum::Call, $message->type);
+        self::assertSame(CallStatusEnum::Unavailable, $message->call?->status);
+        self::assertSame(0, ChatMember::query()->where('user_id', $this->bob->id)->value('last_read_message_id'));
+
+        $call = $message->call;
+        self::assertNotNull($call);
+        self::assertNull($this->app->make(RecordCallInChatAction::class)->run($call), 'Звонок записывается один раз');
+        self::assertSame(1, ChatMessage::query()->count());
+    }
+
+    public function testCallWithGuestIsNotRecorded(): void
+    {
+        $guest = $this->connect(User::factory()->create(['guest_of_id' => $this->bob->id]));
+        $this->connect($this->bob);
+
+        $this->send($guest, 'call.invite', ['callee_id' => $this->bob->id]);
+        $callId = $this->dataPath($this->messages($guest)[0], 'call.id');
+        self::assertIsInt($callId);
+        $this->send($guest, 'call.hangup', ['call_id' => $callId]);
+
+        self::assertSame(0, ChatMessage::query()->count());
+        self::assertSame(0, Chat::query()->count());
+    }
+
+    public function testTypingGoesToOtherMembersOfChatOnly(): void
+    {
+        $chat      = Chat::factory()->between($this->alice, $this->bob)->create();
+        $alice     = $this->connect($this->alice);
+        $aliceTab  = $this->connect($this->alice);
+        $bob       = $this->connect($this->bob);
+        $carolUser = User::factory()->create();
+        $carol     = $this->connect($carolUser);
+
+        $this->send($alice, 'chat.typing', ['chat_id' => $chat->id]);
+
+        self::assertSame([['type' => 'chat.typing', 'data' => ['chat_id' => $chat->id, 'user_id' => $this->alice->id]]], $this->messages($bob));
+        self::assertSame([], $this->messages($aliceTab));
+        self::assertSame([], $this->messages($alice));
+
+        $this->send($carol, 'chat.typing', ['chat_id' => $chat->id]);
+
+        self::assertSame([], $this->messages($carol), 'Чужой чат молча игнорируется');
+        self::assertSame([], $this->messages($bob));
+    }
+
+    public function testDeliversRealtimeEventsToEveryTabOfRecipients(): void
+    {
+        $alice     = $this->connect($this->alice);
+        $bobLaptop = $this->connect($this->bob);
+        $bobPhone  = $this->connect($this->bob);
+        $carol     = $this->connect(User::factory()->create());
+
+        $this->app->make(RealtimeBus::class)->publish([$this->alice->id, $this->bob->id], 'chat.message', ['message' => ['id' => 1]]);
+        $this->router->flushRealtime(10);
+
+        $expected = [['type' => 'chat.message', 'data' => ['message' => ['id' => 1]]]];
+
+        self::assertSame($expected, $this->messages($alice));
+        self::assertSame($expected, $this->messages($bobLaptop));
+        self::assertSame($expected, $this->messages($bobPhone));
+        self::assertSame([], $this->messages($carol));
+
+        $this->router->flushRealtime(10);
+        self::assertSame([], $this->messages($alice));
     }
 
     public function testGuestAndOwnerSeeOnlyEachOtherOnline(): void
