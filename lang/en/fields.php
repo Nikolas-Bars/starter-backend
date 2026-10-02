@@ -14,4 +14,7 @@ return [
         'password'    => 'password',
         'device_name' => 'device name',
     ],
+    'user_list' => [
+        'search' => 'search',
+    ],
 ];

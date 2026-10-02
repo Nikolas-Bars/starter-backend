@@ -1,0 +1,266 @@
+<?php
+
+declare(strict_types=1);
+
+namespace App\Modules\Call\WebSockets;
+
+use App\Exceptions\ApiException;
+use App\Modules\Call\Actions\AcceptCallAction;
+use App\Modules\Call\Actions\EndCallAction;
+use App\Modules\Call\Actions\InitiateCallAction;
+use App\Modules\Call\Actions\MarkMissedCallsAction;
+use App\Modules\Call\Actions\RejectCallAction;
+use App\Modules\Call\Enums\CallStatusEnum;
+use App\Modules\Call\Exceptions\NotCallParticipantException;
+use App\Modules\Call\Http\Resources\CallResource;
+use App\Modules\Call\Models\Call;
+use App\Modules\User\Models\User;
+use App\Services\Translator;
+use JsonException;
+
+/**
+ * Протокол сигнализации. Каждое сообщение — JSON вида {"type": "...", "data": {...}}.
+ *
+ * От клиента: ping, call.invite {callee_id}, call.accept|call.reject|call.hangup {call_id},
+ *             signal.offer|signal.answer|signal.ice {call_id, payload}.
+ * От сервера: ready, pong, call.ringing, call.incoming, call.accepted {call},
+ *             call.ended {call, reason}, signal.* {call_id, payload}, error {request, message}.
+ *
+ * Звонок меняет состояние только через Actions; offer/answer/ICE в БД не пишутся,
+ * а пересылаются собеседнику как есть.
+ */
+final class MessageRouter
+{
+    private const SIGNAL_TYPES = [
+        'signal.offer'  => true,
+        'signal.answer' => true,
+        'signal.ice'    => true,
+    ];
+
+    /**
+     * Вызов приняли в другой вкладке того же пользователя
+     */
+    private const REASON_ANSWERED_ELSEWHERE = 'answered_elsewhere';
+
+    public function __construct(
+        private readonly ConnectionRegistry    $registry,
+        private readonly InitiateCallAction    $initiateCallAction,
+        private readonly AcceptCallAction      $acceptCallAction,
+        private readonly RejectCallAction      $rejectCallAction,
+        private readonly EndCallAction         $endCallAction,
+        private readonly MarkMissedCallsAction $markMissedCallsAction,
+    ) {
+    }
+
+    public function handle(Connection $connection, string $raw): void
+    {
+        $user = $connection->user;
+
+        if ($user === null) {
+            return;
+        }
+
+        $type = null;
+
+        try {
+            $message = \json_decode($raw, true, 32, JSON_THROW_ON_ERROR);
+
+            if (!\is_array($message) || !\is_string($message['type'] ?? null)) {
+                throw new InvalidMessageException();
+            }
+
+            $type = $message['type'];
+            $data = \is_array($message['data'] ?? null) ? $message['data'] : [];
+
+            $this->dispatch($connection, $user, $type, $data);
+        } catch (ApiException $exception) {
+            $this->sendError($connection, $type, $exception->getErrorMessage());
+        } catch (InvalidMessageException|JsonException) {
+            $this->sendError($connection, $type, Translator::get('exceptions.call.bad_message'));
+        }
+    }
+
+    /**
+     * Соединение закрылось: если в нём шёл звонок, он завершается и собеседник об этом узнаёт.
+     */
+    public function disconnect(Connection $connection): void
+    {
+        $callId = $this->registry->remove($connection);
+        $user   = $connection->user;
+
+        if ($callId === null || $user === null) {
+            return;
+        }
+
+        try {
+            $this->notifyEnded($this->endCallAction->run($user, $callId));
+        } catch (ApiException) {
+            $this->registry->releaseCall($callId);
+        }
+    }
+
+    /**
+     * Раз в секунду: вызовы, на которые не ответили вовремя, становятся пропущенными.
+     */
+    public function tick(int $ringTimeoutSeconds): void
+    {
+        foreach ($this->markMissedCallsAction->run($ringTimeoutSeconds) as $call) {
+            $this->notifyEnded($call);
+        }
+    }
+
+    /**
+     * @param array<mixed> $data
+     *
+     * @throws ApiException
+     * @throws InvalidMessageException
+     */
+    private function dispatch(Connection $connection, User $user, string $type, array $data): void
+    {
+        if (isset(self::SIGNAL_TYPES[$type])) {
+            $this->relaySignal($connection, $type, $this->intField($data, 'call_id'), $data['payload'] ?? null);
+
+            return;
+        }
+
+        switch ($type) {
+            case 'ping':
+                $connection->send(['type' => 'pong']);
+                break;
+            case 'call.invite':
+                $this->invite($connection, $user, $this->intField($data, 'callee_id'));
+                break;
+            case 'call.accept':
+                $this->accept($connection, $user, $this->intField($data, 'call_id'));
+                break;
+            case 'call.reject':
+                $this->notifyEnded($this->rejectCallAction->run($user, $this->intField($data, 'call_id')));
+                break;
+            case 'call.hangup':
+                $this->notifyEnded($this->endCallAction->run($user, $this->intField($data, 'call_id')));
+                break;
+            default:
+                throw new InvalidMessageException();
+        }
+    }
+
+    /**
+     * @throws ApiException
+     */
+    private function invite(Connection $connection, User $caller, int $calleeId): void
+    {
+        $call    = $this->initiateCallAction->run($caller, $calleeId, $this->registry->isOnline($calleeId));
+        $payload = ['call' => $this->present($call)];
+
+        if ($call->status !== CallStatusEnum::Ringing) {
+            $connection->send(['type' => 'call.ended', 'data' => $payload + ['reason' => $call->status->value]]);
+
+            return;
+        }
+
+        $this->registry->bindCall($call->id, $connection);
+
+        $connection->send(['type' => 'call.ringing', 'data' => $payload]);
+        $this->sendToUser($calleeId, ['type' => 'call.incoming', 'data' => $payload]);
+    }
+
+    /**
+     * @throws ApiException
+     */
+    private function accept(Connection $connection, User $callee, int $callId): void
+    {
+        $call = $this->acceptCallAction->run($callee, $callId);
+        $this->registry->bindCall($call->id, $connection);
+
+        $accepted = ['type' => 'call.accepted', 'data' => ['call' => $this->present($call)]];
+        $ended    = ['type' => 'call.ended', 'data' => ['call' => $this->present($call), 'reason' => self::REASON_ANSWERED_ELSEWHERE]];
+
+        $this->registry->callConnection($call->id, $call->caller_id)?->send($accepted);
+
+        foreach ($this->registry->forUser($callee->id) as $calleeConnection) {
+            $calleeConnection->send($calleeConnection === $connection ? $accepted : $ended);
+        }
+    }
+
+    /**
+     * Offer/answer/ICE уходят только собеседнику по звонку, к которому привязано это соединение.
+     *
+     * @throws NotCallParticipantException
+     * @throws InvalidMessageException
+     */
+    private function relaySignal(Connection $connection, string $type, int $callId, mixed $payload): void
+    {
+        if (!\is_array($payload)) {
+            throw new InvalidMessageException();
+        }
+
+        if ($this->registry->callOf($connection) !== $callId) {
+            throw new NotCallParticipantException();
+        }
+
+        $this->registry->peerOf($connection)?->send([
+            'type' => $type,
+            'data' => ['call_id' => $callId, 'payload' => $payload],
+        ]);
+    }
+
+    /**
+     * Сообщает о завершении всем, кого звонок касался: соединению звонящего и либо
+     * вкладке, где собеседник ответил, либо (если ещё звонило) всем его вкладкам.
+     */
+    private function notifyEnded(Call $call): void
+    {
+        $message = ['type' => 'call.ended', 'data' => ['call' => $this->present($call), 'reason' => $call->status->value]];
+
+        $calleeConnection = $this->registry->callConnection($call->id, $call->callee_id);
+
+        $recipients   = $calleeConnection === null ? $this->registry->forUser($call->callee_id) : [$calleeConnection];
+        $recipients[] = $this->registry->callConnection($call->id, $call->caller_id);
+
+        foreach ($recipients as $recipient) {
+            $recipient?->send($message);
+        }
+
+        $this->registry->releaseCall($call->id);
+    }
+
+    /**
+     * @param array<string, mixed> $message
+     */
+    private function sendToUser(int $userId, array $message): void
+    {
+        foreach ($this->registry->forUser($userId) as $connection) {
+            $connection->send($message);
+        }
+    }
+
+    private function sendError(Connection $connection, ?string $request, string $message): void
+    {
+        $connection->send(['type' => 'error', 'data' => ['request' => $request, 'message' => $message]]);
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function present(Call $call): array
+    {
+        /** @var array<string, mixed> */
+        return CallResource::make($call)->resolve();
+    }
+
+    /**
+     * @param array<mixed> $data
+     *
+     * @throws InvalidMessageException
+     */
+    private function intField(array $data, string $key): int
+    {
+        $value = $data[$key] ?? null;
+
+        if (!\is_int($value)) {
+            throw new InvalidMessageException();
+        }
+
+        return $value;
+    }
+}

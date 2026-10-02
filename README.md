@@ -23,10 +23,11 @@ make start
 | API       | http://localhost:8090/api                 |
 | Swagger   | http://localhost:8090/api/documentation   |
 | Healthcheck | http://localhost:8090/up                |
+| Звонки (WebSocket) | ws://localhost:8091?token=<access_token> |
 | MariaDB   | localhost:33070 (starter / user / user)   |
 | Redis     | localhost:6390                            |
 
-Порты меняются в `.env`: `APP_PORT`, `DB_FORWARD_PORT`, `REDIS_FORWARD_PORT`.
+Порты меняются в `.env`: `APP_PORT`, `WS_PORT`, `DB_FORWARD_PORT`, `REDIS_FORWARD_PORT`.
 
 ### Моковые пользователи
 
@@ -90,6 +91,16 @@ make check            # lint-check + rector + phpstan + test — перед ка
 make composer cmd='require vendor/package'
 make artisan cmd='route:list'
 ```
+
+## Домен
+
+- Домен: `call-yansburg.com`.
+- Регистратор: [Cloudflare](https://dash.cloudflare.com), аккаунт `nikolasparaslovgp@gmail.com`.
+- Куплен 1 октября 2026 года на год, оплачен до 1 октября 2027 года. Автопродление выключено:
+  включается в Cloudflare → Domain Registration → Manage Domains.
+- DNS тоже в Cloudflare. Записи `A @` и `A turn` указывают на IP сервера в режиме «DNS only»
+  (серое облако): через прокси Cloudflare TURN не работает.
+- Сервер, деплой и обновление — [deploy/README.md](deploy/README.md).
 
 ## Архитектура
 

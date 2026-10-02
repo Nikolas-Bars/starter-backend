@@ -10,6 +10,7 @@ services:
     working_dir: /var/www/html
     ports:
       - "${APP_PORT:-8090}:80"
+      - "${WS_PORT:-8091}:8091"
     volumes:
       - .:/var/www/html
       # vendor живёт в образе: на macOS bind-mount с тысячами файлов заметно тормозит

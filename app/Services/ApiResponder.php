@@ -4,7 +4,9 @@ declare(strict_types=1);
 
 namespace App\Services;
 
+use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Resources\Json\JsonResource;
 use Symfony\Component\HttpFoundation\Response;
 
 /**
@@ -21,6 +23,27 @@ final class ApiResponder
     public static function created(mixed $data = null, string $message = 'Created'): JsonResponse
     {
         return self::build('success', $message, $data, [], Response::HTTP_CREATED);
+    }
+
+    /**
+     * Страница списка: { items: [...], meta: { current_page, last_page, per_page, total } }.
+     *
+     * @template TItem
+     *
+     * @param LengthAwarePaginator<int, TItem> $paginator
+     * @param class-string<JsonResource>       $resource
+     */
+    public static function paginated(LengthAwarePaginator $paginator, string $resource, string $message = 'OK'): JsonResponse
+    {
+        return self::ok([
+            'items' => $resource::collection($paginator->items()),
+            'meta'  => [
+                'current_page' => $paginator->currentPage(),
+                'last_page'    => $paginator->lastPage(),
+                'per_page'     => $paginator->perPage(),
+                'total'        => $paginator->total(),
+            ],
+        ], $message);
     }
 
     public static function noContent(): JsonResponse

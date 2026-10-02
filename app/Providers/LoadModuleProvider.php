@@ -8,7 +8,8 @@ use Illuminate\Support\ServiceProvider;
 use Illuminate\Support\Str;
 
 /**
- * Базовый провайдер модуля: подключает миграции из {Module}/Database/Migrations.
+ * Базовый провайдер модуля: подключает миграции из {Module}/Database/Migrations
+ * и artisan-команды из {Module}/Console/Commands.
  * Маршруты регистрируются атрибутами на контроллерах (config/route-attributes.php).
  */
 abstract class LoadModuleProvider extends ServiceProvider
@@ -20,6 +21,24 @@ abstract class LoadModuleProvider extends ServiceProvider
         if (\is_dir($migrationPath)) {
             $this->loadMigrationsFrom($migrationPath);
         }
+
+        if ($this->app->runningInConsole()) {
+            $this->commands($this->moduleCommands());
+        }
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function moduleCommands(): array
+    {
+        $commandFiles = \glob($this->getModuleDir() . '/Console/Commands/*.php');
+        $namespace    = Str::beforeLast(Str::beforeLast(static::class, '\\'), '\\Providers') . '\\Console\\Commands\\';
+
+        return \array_map(
+            static fn(string $file): string => $namespace . \basename($file, '.php'),
+            $commandFiles === false ? [] : $commandFiles,
+        );
     }
 
     protected function getModuleDir(): string

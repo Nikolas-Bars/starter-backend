@@ -12,4 +12,14 @@ return [
     'auth' => [
         'invalid_credentials' => 'Invalid email or password.',
     ],
+
+    'call' => [
+        'not_found'       => 'Call not found.',
+        'not_participant' => 'You are not a participant of this call.',
+        'already_in_call' => 'Finish your current call first.',
+        'invalid_state'   => 'The call has already ended or has not started yet.',
+        'invalid_callee'  => 'You cannot call this user.',
+        'bad_message'     => 'Malformed message.',
+        'server_error'    => 'Call server error. Please try again.',
+    ],
 ];

@@ -7,6 +7,7 @@
     "require": {
         "php": "^8.3",
         "darkaonline/l5-swagger": "^9.0",
+        "fakerphp/faker": "^1.23",
         "laravel/framework": "^12.0",
         "laravel/sanctum": "^4.0",
         "laravel/tinker": "^2.10.1",
@@ -17,7 +18,6 @@
     },
     "require-dev": {
         "driftingly/rector-laravel": "^2.0",
-        "fakerphp/faker": "^1.23",
         "friendsofphp/php-cs-fixer": "^3.64",
         "larastan/larastan": "^3.0",
         "mockery/mockery": "^1.6",

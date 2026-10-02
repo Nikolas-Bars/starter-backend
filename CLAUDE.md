@@ -26,7 +26,10 @@ app/Modules/{ModuleName}/
 └── Tests/            # Unit and Feature tests
 ```
 
-Modules: User (model, factory, seeder, repository), Auth (register, login, logout, me).
+Modules: User (model, factory, seeder, repository, user list), Auth (register, login, logout, me),
+Call (1-on-1 video calls: call history, ICE servers, own WebSocket signaling server in `Call/WebSockets/`,
+started by `php artisan call:ws-serve` under supervisor; restart it after code changes with `make ws-restart`).
+Media goes peer-to-peer over WebRTC; the server only relays JSON signaling messages and records call statuses.
 
 Call chain: Controller → Action → Task → Repository. Controllers call exactly one Action; Actions never
 call other Actions (use SubActions); Tasks never call Actions; Repositories are used only from
@@ -47,7 +50,7 @@ make check              # lint-check + rector + phpstan + tests
 make refresh            # Fresh migrations + seeds
 ```
 
-Docker compose: `docker-compose.yml` (services: php, mariadb, redis). Ports: API 8090, DB 33070, Redis 6390.
+Docker compose: `docker-compose.yml` (services: php, mariadb, redis). Ports: API 8090, WebSocket 8091, DB 33070, Redis 6390.
 
 ## Code Quality Standards
 

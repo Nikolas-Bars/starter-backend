@@ -1,0 +1,107 @@
+# Продакшн: API, сервер звонков, БД, Redis, Caddy (HTTPS + фронтенд) и coturn.
+# Репозиторий фронтенда должен лежать рядом: ../../starter-frontend. Подробности — deploy/README.md
+name: starter
+
+services:
+  php:
+    build:
+      context: ..
+      dockerfile: .docker/Dockerfile_prod
+    image: starter-api:latest
+    restart: unless-stopped
+    env_file: .env
+    depends_on:
+      mariadb:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  mariadb:
+    image: mariadb:11.4
+    restart: unless-stopped
+    environment:
+      MARIADB_DATABASE: ${DB_DATABASE}
+      MARIADB_USER: ${DB_USERNAME}
+      MARIADB_PASSWORD: ${DB_PASSWORD}
+      MARIADB_ROOT_PASSWORD: ${DB_ROOT_PASSWORD}
+    volumes:
+      - mariadb:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+      start_period: 20s
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+
+  # Раздаёт собранный фронтенд, проксирует /api и /ws, сам получает и продлевает сертификат Let's Encrypt
+  web:
+    build:
+      context: ../../starter-frontend
+      dockerfile: .docker/Dockerfile_prod
+      args:
+        VITE_API_URL: ""
+        VITE_WS_URL: wss://${DOMAIN}/ws
+    image: starter-web:latest
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    environment:
+      DOMAIN: ${DOMAIN}
+      ACME_EMAIL: ${ACME_EMAIL}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - php
+
+  # TURN-сервер: пересылает видео, когда браузеры не могут соединиться напрямую (строгий NAT).
+  # Сеть хоста — чтобы не пробрасывать в Docker диапазон UDP-портов для медиа
+  coturn:
+    image: coturn/coturn:4.7
+    restart: unless-stopped
+    network_mode: host
+    command:
+      - -n
+      - --log-file=stdout
+      - --listening-port=3478
+      - --external-ip=${PUBLIC_IP}
+      - --realm=${DOMAIN}
+      - --lt-cred-mech
+      - --user=${CALL_TURN_USERNAME}:${CALL_TURN_CREDENTIAL}
+      - --min-port=49160
+      - --max-port=49200
+      - --fingerprint
+      - --no-cli
+      - --no-tls
+      - --no-dtls
+      - --no-multicast-peers
+      # Через TURN нельзя достучаться до внутренних адресов сервера и Docker-сетей
+      - --denied-peer-ip=0.0.0.0-0.255.255.255
+      - --denied-peer-ip=10.0.0.0-10.255.255.255
+      - --denied-peer-ip=100.64.0.0-100.127.255.255
+      - --denied-peer-ip=127.0.0.0-127.255.255.255
+      - --denied-peer-ip=169.254.0.0-169.254.255.255
+      - --denied-peer-ip=172.16.0.0-172.31.255.255
+      - --denied-peer-ip=192.168.0.0-192.168.255.255
+      - --denied-peer-ip=::1
+
+volumes:
+  mariadb:
+  redis:
+  caddy_data:
+  caddy_config:

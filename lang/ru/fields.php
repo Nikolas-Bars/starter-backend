@@ -15,4 +15,7 @@ return [
         'password'    => 'пароль',
         'device_name' => 'название устройства',
     ],
+    'user_list' => [
+        'search' => 'поиск',
+    ],
 ];

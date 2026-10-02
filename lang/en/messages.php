@@ -9,4 +9,11 @@ return [
         'logged_out' => 'Logged out.',
         'me'         => 'Current user.',
     ],
+    'call' => [
+        'history'     => 'Call history.',
+        'ice_servers' => 'Call connection settings.',
+    ],
+    'user' => [
+        'list' => 'User list.',
+    ],
 ];

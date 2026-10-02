@@ -5,7 +5,7 @@ EXEC           = $(COMPOSE) exec -T $(PHP_CONTAINER)
 EXEC_TTY       = $(COMPOSE) exec $(PHP_CONTAINER)
 
 .DEFAULT_GOAL := help
-.PHONY: help start env up down restart rebuild logs refresh seed migrate cache-clear copy-vendor \
+.PHONY: help start env up down restart rebuild logs ws-restart refresh seed migrate cache-clear copy-vendor \
         lint lint-check rector phpstan test coverage check swagger shell composer artisan
 
 help:
@@ -14,7 +14,8 @@ help:
 	@echo "  up / down    - Запуск / остановка контейнеров"
 	@echo "  restart      - Перезапуск контейнеров"
 	@echo "  rebuild      - Пересборка образа (после изменения composer.json или Dockerfile)"
-	@echo "  logs         - Логи PHP-контейнера (RoadRunner, очередь, планировщик)"
+	@echo "  logs         - Логи PHP-контейнера (RoadRunner, звонки, очередь, планировщик)"
+	@echo "  ws-restart   - Перезапуск WebSocket-сервера звонков (после правок его кода)"
 	@echo "  migrate      - Применить миграции"
 	@echo "  refresh      - Пересоздать БД и заново залить моковых пользователей"
 	@echo "  cache-clear  - Очистка кэша Laravel"
@@ -53,6 +54,7 @@ start: env
 	@echo ""
 	@echo "Готово!"
 	@echo "  API:      http://localhost:$${APP_PORT:-8090}/api"
+	@echo "  Звонки:   ws://localhost:$${WS_PORT:-8091}"
 	@echo "  Swagger:  http://localhost:$${APP_PORT:-8090}/api/documentation"
 	@echo "  Вход:     admin@example.com / Password123"
 
@@ -74,6 +76,9 @@ rebuild:
 
 logs:
 	@$(COMPOSE) logs -f $(PHP_CONTAINER)
+
+ws-restart:
+	@$(EXEC) supervisorctl -c /etc/supervisor/conf.d/supervisord.conf restart call-ws
 
 migrate:
 	@$(EXEC) php artisan migrate --force

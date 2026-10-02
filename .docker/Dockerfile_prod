@@ -1,0 +1,61 @@
+FROM ghcr.io/roadrunner-server/roadrunner:2025.1.11 AS roadrunner
+FROM php:8.3-cli
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    supervisor \
+    curl \
+    unzip \
+    libicu-dev \
+    libzip-dev \
+    && apt-get autoremove -y \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN pecl install redis \
+    && docker-php-ext-enable redis \
+    && docker-php-ext-install -j"$(nproc)" \
+        bcmath \
+        intl \
+        opcache \
+        pcntl \
+        pdo_mysql \
+        sockets \
+        zip \
+    && pecl clear-cache \
+    && rm -rf /tmp/pear ~/.pearrc
+
+COPY .docker/php/php.prod.ini /usr/local/etc/php/php.ini
+
+COPY --from=composer:2 /usr/bin/composer /usr/local/bin/composer
+COPY --from=roadrunner /usr/bin/rr /usr/local/bin/rr
+
+WORKDIR /var/www/html
+
+ENV COMPOSER_HOME=/tmp/composer
+
+RUN mkdir -p /tmp/composer && chown -R www-data:www-data /var/www/html /tmp/composer
+
+USER www-data
+
+# Сначала только зависимости: слой пересобирается, лишь когда меняется composer.lock
+COPY --chown=www-data:www-data composer.json composer.lock ./
+RUN composer install --no-dev --no-scripts --no-autoloader --prefer-dist --no-ansi --no-interaction
+
+COPY --chown=www-data:www-data . .
+
+RUN mkdir -p storage/framework/cache/data storage/framework/sessions storage/framework/views \
+        storage/logs storage/api-docs bootstrap/cache \
+    && composer dump-autoload --optimize --no-dev --no-ansi \
+    && php artisan package:discover --ansi
+
+USER root
+
+COPY .docker/supervisor/supervisord.prod.conf /etc/supervisor/conf.d/supervisord.conf
+COPY .docker/docker-entrypoint.prod.sh /usr/local/bin/docker-entrypoint
+RUN chmod +x /usr/local/bin/docker-entrypoint
+
+HEALTHCHECK --interval=10s --timeout=3s --start-period=20s --retries=10 \
+    CMD curl -fsS http://127.0.0.1/up > /dev/null || exit 1
+
+ENTRYPOINT ["docker-entrypoint"]
+CMD ["supervisord", "-c", "/etc/supervisor/conf.d/supervisord.conf"]

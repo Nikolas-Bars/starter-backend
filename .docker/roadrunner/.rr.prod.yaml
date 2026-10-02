@@ -1,0 +1,28 @@
+version: '3'
+
+rpc:
+  listen: 'tcp://127.0.0.1:6001'
+
+server:
+  command: "php vendor/bin/rr-worker start --laravel-path=/var/www/html --worker-mode=http"
+  relay: "pipes"
+  relay_timeout: "20s"
+  env:
+    - APP_BASE_PATH: "/var/www/html"
+
+http:
+  address: 0.0.0.0:80
+  pool:
+    num_workers: 4
+    # Воркер пересоздаётся после стольких запросов — страховка от утечек памяти
+    max_jobs: 500
+    allocate_timeout: 30s
+    destroy_timeout: 30s
+    supervisor:
+      exec_ttl: 30s
+      max_worker_memory: 128
+
+logs:
+  mode: production
+  level: warn
+  encoding: json

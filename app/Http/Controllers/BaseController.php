@@ -29,6 +29,15 @@ use OpenApi\Annotations as OA;
  *     @OA\Property(property="data", type="object", nullable=true, example=null),
  *     @OA\Property(property="errors", type="object", example={})
  * )
+ * @OA\Schema(
+ *     schema="PaginationMeta",
+ *     type="object",
+ *     description="Положение страницы в списке",
+ *     @OA\Property(property="current_page", type="integer", example=1),
+ *     @OA\Property(property="last_page", type="integer", example=3),
+ *     @OA\Property(property="per_page", type="integer", example=20),
+ *     @OA\Property(property="total", type="integer", example=47)
+ * )
  * @OA\Response(
  *     response="Unauthorized",
  *     description="Не авторизован",

@@ -6,6 +6,8 @@ namespace App\Providers;
 
 use Illuminate\Database\Eloquent\Factories\Factory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Http\Middleware\TrustProxies;
+use Illuminate\Support\Facades\Config;
 use Illuminate\Support\ServiceProvider;
 use Illuminate\Support\Str;
 
@@ -19,6 +21,16 @@ final class AppServiceProvider extends ServiceProvider
     public function boot(): void
     {
         $this->registerModuleFactoryResolvers();
+        $this->configureTrustedProxies();
+    }
+
+    private function configureTrustedProxies(): void
+    {
+        $proxies = \trim(Config::string('app.trusted_proxies'));
+
+        if ($proxies !== '') {
+            TrustProxies::at($proxies === '*' ? '*' : \array_map('trim', \explode(',', $proxies)));
+        }
     }
 
     /**
