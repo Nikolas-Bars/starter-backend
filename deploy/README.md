@@ -23,15 +23,36 @@ ssh starter
 
 Открытые порты (ufw): 22, 80, 443 (tcp/udp), 3478 (tcp/udp), 49160–49200/udp (медиа через TURN).
 
-## Обновить код на сервере
+## Как вносить изменения
 
-Запушить изменения в оба репозитория, затем:
+Прямой пуш в `main` закрыт: изменения попадают туда только через Pull Request с зелёными проверками.
+
+```bash
+git switch main && git pull
+git switch -c feature/название      # ветка под задачу
+# ...правки, make check...
+git push -u origin feature/название
+gh pr create --web                  # открыть Pull Request на GitHub
+```
+
+- На каждый Pull Request GitHub Actions запускает проверки (`.github/workflows/ci.yml`): в бэкенде
+  php-cs-fixer, Rector, PHPStan и PHPUnit, во фронте oxlint, ESLint, Prettier, vue-tsc, Vitest и сборку.
+- После мёржа в `main` срабатывает `.github/workflows/deploy.yml` и выкатывает изменения на сервер.
+  Ход деплоя виден во вкладке Actions репозитория.
+- Если задача затрагивает фронт и бэкенд, ветки в обоих репозиториях и два Pull Request; мёржить вместе.
+  Деплой общий: скрипт подтягивает `main` обоих репозиториев, одновременные запуски идут по очереди.
+
+## Деплой
+
+`deploy/deploy.sh` подтягивает код, пересобирает образы, перезапускает контейнеры и применяет миграции.
+GitHub Actions заходит на сервер отдельным ключом (секреты `DEPLOY_SSH_KEY`, `DEPLOY_KNOWN_HOSTS`),
+которому в `~/.ssh/authorized_keys` разрешена только эта команда. Вручную:
 
 ```bash
 ssh starter /opt/starter/starter-backend/deploy/deploy.sh
 ```
 
-Скрипт подтягивает код, пересобирает образы, перезапускает контейнеры и применяет миграции.
+Или кнопкой Run workflow во вкладке Actions → Deploy.
 
 ## Частые команды
 

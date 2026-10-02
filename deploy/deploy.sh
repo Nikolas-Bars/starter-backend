@@ -4,6 +4,10 @@ set -euo pipefail
 
 cd "$(dirname "$0")"
 
+# Мёрж во фронт и бэкенд одновременно запускает два деплоя — выполняем их по очереди
+exec 9> /tmp/starter-deploy.lock
+flock 9
+
 git -C .. pull --ff-only
 git -C ../../starter-frontend pull --ff-only
 
