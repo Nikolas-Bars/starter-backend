@@ -100,7 +100,8 @@ final class FcmClient
     }
 
     /**
-     * UNREGISTERED — приложение удалено, SENDER_ID_MISMATCH — токен от другого проекта Firebase.
+     * UNREGISTERED — приложение удалено, SENDER_ID_MISMATCH — токен от другого проекта Firebase,
+     * 400 с нарушением в поле message.token — токен испорчен.
      * Прочие ошибки (в том числе 400 из-за содержимого) устройство не удаляют
      */
     private function isInvalidToken(Response $response): bool
@@ -108,12 +109,31 @@ final class FcmClient
         $details = $response->json('error.details');
 
         foreach (\is_array($details) ? $details : [] as $detail) {
-            if (\is_array($detail) && \is_string($detail['errorCode'] ?? null) && isset(self::STALE_TOKEN_ERRORS[$detail['errorCode']])) {
+            if (! \is_array($detail)) {
+                continue;
+            }
+
+            if (\is_string($detail['errorCode'] ?? null) && isset(self::STALE_TOKEN_ERRORS[$detail['errorCode']])) {
+                return true;
+            }
+
+            if ($this->violatesToken($detail['fieldViolations'] ?? null)) {
                 return true;
             }
         }
 
         return $response->status() === 404;
+    }
+
+    private function violatesToken(mixed $violations): bool
+    {
+        foreach (\is_array($violations) ? $violations : [] as $violation) {
+            if (\is_array($violation) && ($violation['field'] ?? null) === 'message.token') {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**

@@ -41,10 +41,10 @@ final class SendPushToUserTaskTest extends TestCase
 
     public function testForgetsUninstalledDevicesOnly(): void
     {
-        FakeFirebase::enable(['uninstalled' => 404, 'flaky' => 500]);
+        FakeFirebase::enable(['uninstalled' => 404, 'garbled' => 400, 'flaky' => 500]);
         $user = User::factory()->create();
 
-        foreach (['uninstalled', 'flaky', 'fine'] as $token) {
+        foreach (['uninstalled', 'garbled', 'flaky', 'fine'] as $token) {
             PushDevice::factory()->create(['user_id' => $user->id, 'token' => $token]);
         }
 

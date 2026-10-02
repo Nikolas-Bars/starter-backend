@@ -55,9 +55,15 @@ final class FakeFirebase
             $token  = $request['message']['token'] ?? null;
             $status = \is_string($token) ? ($statusByToken[$token] ?? 200) : 400;
 
-            return $status === 200
-                ? Http::response(['name' => 'projects/' . self::PROJECT . '/messages/1'])
-                : Http::response(['error' => ['code' => $status, 'details' => [['errorCode' => $status === 404 ? 'UNREGISTERED' : 'INTERNAL']]]], $status);
+            return match ($status) {
+                200 => Http::response(['name' => 'projects/' . self::PROJECT . '/messages/1']),
+                400 => Http::response(['error' => ['code' => 400, 'details' => [
+                    ['errorCode' => 'INVALID_ARGUMENT'],
+                    ['fieldViolations' => [['field' => 'message.token', 'description' => 'not a valid FCM registration token']]],
+                ]]], 400),
+                404     => Http::response(['error' => ['code' => 404, 'details' => [['errorCode' => 'UNREGISTERED']]]], 404),
+                default => Http::response(['error' => ['code' => $status, 'details' => [['errorCode' => 'INTERNAL']]]], $status),
+            };
         });
     }
 }
