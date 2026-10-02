@@ -81,26 +81,29 @@ ssh starter 'chmod 600 /opt/starter/starter-backend/deploy/secrets/firebase-cred
 
 ## Бэкапы
 
-Каждый день в 03:30 (время сервера, UTC) `deploy/backup.sh` кладёт сжатый дамп БД в
-`/var/backups/starter/`, хранятся последние 14 дней. Расписание — `/etc/cron.d/starter-backup`
-(ставится командой `./backup.sh --install`), журнал — `/var/log/starter-backup.log`.
+Каждый день в 03:30 (время сервера, UTC) `deploy/backup.sh` делает дамп БД, сжимает и шифрует его
+[age](https://age-encryption.org), кладёт в `/var/backups/starter/` (хранятся последние 14 дней) и
+присылает копию в Telegram. Расписание — `/etc/cron.d/starter-backup` (ставится командой
+`./backup.sh --install`), журнал — `/var/log/starter-backup.log`.
 
-Бэкапы лежат на том же сервере: от ошибки или порчи данных спасут, от потери сервера — нет.
-Время от времени забирайте свежий дамп к себе:
+Настройки в `deploy/.env`:
+
+- `BACKUP_AGE_RECIPIENT` — открытый ключ `age1…`. Им можно только зашифровать, поэтому даже со
+  взломанного сервера старые бэкапы не прочитать.
+- `BACKUP_TELEGRAM_BOT_TOKEN`, `BACKUP_TELEGRAM_CHAT_ID` — бот и чат, куда приходят копии.
+
+Секретный ключ лежит на Маке в `~/.config/starter/backup-age-key.txt`, копия — в менеджере паролей.
+На сервере его нет и быть не должно. Потерять его — потерять все бэкапы.
+
+Восстановить с Мака (текущие данные БД заменятся данными дампа; файл — из Telegram или с сервера):
 
 ```bash
-scp "starter:$(ssh starter 'ls -t /var/backups/starter/*.sql.gz | head -1')" ~/Downloads/
+age -d -i ~/.config/starter/backup-age-key.txt ~/Downloads/starter-2026-10-03-0330.sql.gz.age \
+  | gunzip \
+  | ssh starter 'cd /opt/starter/starter-backend/deploy && docker compose exec -T mariadb sh -c '\''MYSQL_PWD="$MARIADB_ROOT_PASSWORD" exec mariadb -uroot "$MARIADB_DATABASE"'\'''
 ```
 
-Сделать бэкап вручную и восстановить из него (текущие данные БД заменятся данными дампа):
-
-```bash
-ssh starter
-cd /opt/starter/starter-backend/deploy
-./backup.sh
-gunzip -c /var/backups/starter/starter-2026-10-03-0330.sql.gz \
-  | docker compose exec -T mariadb sh -c 'MYSQL_PWD="$MARIADB_ROOT_PASSWORD" exec mariadb -uroot "$MARIADB_DATABASE"'
-```
+Сделать бэкап вручную: `ssh starter /opt/starter/starter-backend/deploy/backup.sh`.
 
 ## Частые команды
 
