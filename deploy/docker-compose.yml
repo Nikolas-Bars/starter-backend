@@ -24,6 +24,10 @@ services:
   mariadb:
     image: mariadb:11.4
     restart: unless-stopped
+    # Только для самого сервера: DBeaver подключается через SSH-туннель (deploy/README.md, «База из DBeaver»).
+    # Docker публикует порты в обход ufw, поэтому без 127.0.0.1 база открылась бы в интернет
+    ports:
+      - "127.0.0.1:3306:3306"
     environment:
       MARIADB_DATABASE: ${DB_DATABASE}
       MARIADB_USER: ${DB_USERNAME}
