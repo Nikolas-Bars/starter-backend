@@ -34,6 +34,14 @@ return [
         'ttl' => (int)env('CALL_TURN_TTL', 6 * 3600),
     ],
 
+    'links' => [
+        // Сколько минут действует вход гостя, пришедшего по ссылке для звонка
+        'guest_token_ttl' => (int)env('CALL_GUEST_TOKEN_TTL', 12 * 60),
+
+        // Попыток войти гостем в минуту с одного IP
+        'join_attempts_per_minute' => (int)env('CALL_LINK_JOIN_ATTEMPTS', 10),
+    ],
+
     'websocket' => [
         'host' => env('CALL_WS_HOST', '0.0.0.0'),
         'port' => (int)env('CALL_WS_PORT', 8091),

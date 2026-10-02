@@ -31,15 +31,27 @@ final class ListUsersControllerTest extends TestCase
         User::factory()->create(['name' => 'Иван Петров', 'email' => 'ivan@example.com']);
         User::factory()->create(['name' => 'Мария', 'email' => 'maria@example.com']);
 
-        $this->getJson('/api/users?search=Петров')
+        $this->getJson('/api/users?' . \http_build_query(['search' => 'Петров']))
             ->assertOk()
             ->assertJsonCount(1, 'data.items')
             ->assertJsonPath('data.items.0.email', 'ivan@example.com');
 
-        $this->getJson('/api/users?search=maria@')
+        $this->getJson('/api/users?' . \http_build_query(['search' => 'maria@']))
             ->assertOk()
             ->assertJsonCount(1, 'data.items')
             ->assertJsonPath('data.items.0.name', 'Мария');
+    }
+
+    public function testHidesGuestsAndIsClosedForThem(): void
+    {
+        $host = $this->actingAsUser();
+        User::factory()->create(['guest_of_id' => $host->id]);
+
+        $this->getJson('/api/users')->assertOk()->assertJsonCount(0, 'data.items');
+
+        $this->actingAsUser(User::factory()->create(['guest_of_id' => $host->id]));
+
+        $this->getJson('/api/users')->assertForbidden();
     }
 
     public function testValidatesSearchLength(): void

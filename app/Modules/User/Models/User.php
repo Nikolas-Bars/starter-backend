@@ -12,6 +12,7 @@ use Laravel\Sanctum\HasApiTokens;
 
 /**
  * @property      int         $id
+ * @property      int|null    $guest_of_id       Гость по ссылке для звонка: кто его пригласил
  * @property      string      $name              Имя пользователя
  * @property      string      $email             Email, он же логин
  * @property      Carbon|null $email_verified_at Дата подтверждения email
@@ -30,6 +31,7 @@ final class User extends Authenticatable
      * @var list<string>
      */
     protected $fillable = [
+        'guest_of_id',
         'name',
         'email',
         'password',
@@ -41,6 +43,24 @@ final class User extends Authenticatable
     protected $hidden = [
         'password',
     ];
+
+    public function isGuest(): bool
+    {
+        return $this->guest_of_id !== null;
+    }
+
+    /**
+     * Можно ли позвонить другому пользователю и видеть, в сети ли он:
+     * гость по ссылке и владелец ссылки связаны только друг с другом.
+     */
+    public function canContact(self $other): bool
+    {
+        if ($this->isGuest()) {
+            return $this->guest_of_id === $other->id;
+        }
+
+        return !$other->isGuest() || $other->guest_of_id === $this->id;
+    }
 
     /**
      * Пароль хэшируется автоматически при записи в атрибут (bcrypt, BCRYPT_ROUNDS).

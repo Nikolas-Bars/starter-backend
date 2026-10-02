@@ -22,4 +22,12 @@ return [
         'bad_message'     => 'Malformed message.',
         'server_error'    => 'Call server error. Please try again.',
     ],
+
+    'call_link' => [
+        'not_found' => 'This call link is no longer valid. Ask for a new one.',
+    ],
+
+    'user' => [
+        'guest_forbidden' => 'Not available for guests. Sign up to continue.',
+    ],
 ];

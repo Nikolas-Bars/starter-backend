@@ -9,6 +9,7 @@ use App\Modules\User\Models\User;
 use App\Repositories\BaseRepository;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Support\Str;
 
 /**
  * @extends BaseRepository<User>
@@ -36,6 +37,7 @@ final class UserRepository extends BaseRepository
     public function paginateExcept(int $exceptId, ?string $search, int $perPage): LengthAwarePaginator
     {
         $query = $this->query()->whereKeyNot($exceptId);
+        $query->getQuery()->whereNull('guest_of_id');
 
         if ($search !== null) {
             $pattern = '%' . $search . '%';
@@ -56,6 +58,19 @@ final class UserRepository extends BaseRepository
             'name'     => $dto->name,
             'email'    => $dto->email,
             'password' => $dto->password,
+        ]);
+    }
+
+    /**
+     * Гость входит только по выданному токену: email и пароль случайные, войти с ними нельзя.
+     */
+    public function storeGuest(string $name, int $hostId): User
+    {
+        return $this->create([
+            'guest_of_id' => $hostId,
+            'name'        => $name,
+            'email'       => 'guest-' . Str::uuid()->toString() . '@guest.invalid',
+            'password'    => Str::random(64),
         ]);
     }
 }

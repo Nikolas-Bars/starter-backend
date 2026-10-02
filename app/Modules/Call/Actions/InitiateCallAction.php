@@ -35,7 +35,9 @@ final class InitiateCallAction extends BaseAction
      */
     public function run(User $caller, int $calleeId, bool $calleeOnline): Call
     {
-        if ($calleeId === $caller->id || $this->findUserByIdTask->run($calleeId) === null) {
+        $callee = $calleeId === $caller->id ? null : $this->findUserByIdTask->run($calleeId);
+
+        if ($callee === null || !$caller->canContact($callee)) {
             throw new InvalidCalleeException();
         }
 
