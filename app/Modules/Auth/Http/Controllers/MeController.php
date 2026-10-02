@@ -41,6 +41,6 @@ final class MeController extends BaseController
         /** @var User $user */
         $user = $request->user();
 
-        return ApiResponder::ok(UserResource::make($user), Translator::get('messages.auth.me'));
+        return ApiResponder::ok(UserResource::make($user)->withEmail(), Translator::get('messages.auth.me'));
     }
 }

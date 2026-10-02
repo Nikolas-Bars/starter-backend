@@ -33,7 +33,7 @@ final class AuthTokenResource extends JsonResource
             'access_token' => $this->resource->access_token,
             'token_type'   => $this->resource->token_type,
             'expires_at'   => $this->resource->expires_at?->toIso8601String(),
-            'user'         => UserResource::make($this->resource->user)->resolve($request),
+            'user'         => UserResource::make($this->resource->user)->withEmail()->resolve($request),
         ];
     }
 }

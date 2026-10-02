@@ -46,6 +46,6 @@ final class UpdateProfileController extends BaseController
         /** @var User $user */
         $user = $request->user();
 
-        return ApiResponder::ok(UserResource::make($action->run($user, $request->toDTO())), Translator::get('messages.user.profile_updated'));
+        return ApiResponder::ok(UserResource::make($action->run($user, $request->toDTO()))->withEmail(), Translator::get('messages.user.profile_updated'));
     }
 }

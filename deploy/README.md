@@ -79,6 +79,29 @@ ssh starter 'chmod 600 /opt/starter/starter-backend/deploy/secrets/firebase-cred
 
 Без файла push выключены, а звонок собеседнику не в сети сразу завершается как «не в сети».
 
+## Бэкапы
+
+Каждый день в 03:30 (время сервера, UTC) `deploy/backup.sh` кладёт сжатый дамп БД в
+`/var/backups/starter/`, хранятся последние 14 дней. Расписание — `/etc/cron.d/starter-backup`
+(ставится командой `./backup.sh --install`), журнал — `/var/log/starter-backup.log`.
+
+Бэкапы лежат на том же сервере: от ошибки или порчи данных спасут, от потери сервера — нет.
+Время от времени забирайте свежий дамп к себе:
+
+```bash
+scp "starter:$(ssh starter 'ls -t /var/backups/starter/*.sql.gz | head -1')" ~/Downloads/
+```
+
+Сделать бэкап вручную и восстановить из него (текущие данные БД заменятся данными дампа):
+
+```bash
+ssh starter
+cd /opt/starter/starter-backend/deploy
+./backup.sh
+gunzip -c /var/backups/starter/starter-2026-10-03-0330.sql.gz \
+  | docker compose exec -T mariadb sh -c 'MYSQL_PWD="$MARIADB_ROOT_PASSWORD" exec mariadb -uroot "$MARIADB_DATABASE"'
+```
+
 ## Частые команды
 
 ```bash
@@ -92,11 +115,13 @@ docker compose exec php php artisan tinker
 docker compose restart php                # после правки deploy/.env
 ```
 
-Тестовые пользователи (`admin@`, `ivan@`, `maria@example.com`, пароль `Password123`) созданы сидером.
-Пересоздать БД с нуля (все данные пропадут):
+Моковых пользователей на проде нет: сидер в `APP_ENV=production` их не создаёт. Аккаунты заводятся
+через регистрацию на сайте.
+
+Пересоздать БД с нуля (все данные пропадут, сначала сделайте бэкап — раздел «Бэкапы»):
 
 ```bash
-docker compose exec php php artisan migrate:fresh --seed --force
+docker compose exec php php artisan migrate:fresh --force
 ```
 
 ## Первая установка на чистый сервер
@@ -112,7 +137,8 @@ git clone https://github.com/Nikolas-Bars/starter-frontend.git
 cd starter-backend/deploy
 cp .env.example .env    # заполнить ACME_EMAIL, APP_KEY и пароли
 docker compose up -d --build --wait
-docker compose exec php php artisan migrate --seed --force
+docker compose exec php php artisan migrate --force
+./backup.sh --install   # ежедневный бэкап БД, раздел «Бэкапы»
 ```
 
 DNS (Cloudflare): записи `A @` и `A turn` → IP сервера в режиме «DNS only» (серое облако).

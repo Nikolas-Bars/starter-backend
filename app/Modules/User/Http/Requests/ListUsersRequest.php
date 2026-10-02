@@ -14,7 +14,7 @@ use Illuminate\Foundation\Http\FormRequest;
  *     name="search",
  *     in="query",
  *     required=false,
- *     description="Часть имени, email или ника (можно с @)",
+ *     description="Часть имени или ника (можно с @) либо email целиком",
  *     @OA\Schema(type="string", maxLength=100, example="иван")
  * )
  */
