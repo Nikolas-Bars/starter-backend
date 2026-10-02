@@ -18,8 +18,9 @@ final class ConsumeWebSocketTicketTask extends BaseTask
             return null;
         }
 
-        $userId = Cache::pull(IssueWebSocketTicketTask::CACHE_PREFIX . $ticket);
+        // Redis-хранилище Laravel хранит числа без сериализации и возвращает их строкой
+        $userId = \filter_var(Cache::pull(IssueWebSocketTicketTask::CACHE_PREFIX . $ticket), FILTER_VALIDATE_INT);
 
-        return \is_int($userId) ? $userId : null;
+        return $userId === false ? null : $userId;
     }
 }
