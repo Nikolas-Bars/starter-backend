@@ -79,6 +79,32 @@ ssh starter 'chmod 600 /opt/starter/starter-backend/deploy/secrets/firebase-cred
 
 Без файла push выключены, а звонок собеседнику не в сети сразу завершается как «не в сети».
 
+## Бэкапы
+
+Каждый день в 03:30 (время сервера, UTC) `deploy/backup.sh` делает дамп БД, сжимает и шифрует его
+[age](https://age-encryption.org), кладёт в `/var/backups/starter/` (хранятся последние 14 дней) и
+присылает копию в Telegram. Расписание — `/etc/cron.d/starter-backup` (ставится командой
+`./backup.sh --install`), журнал — `/var/log/starter-backup.log`.
+
+Настройки в `deploy/.env`:
+
+- `BACKUP_AGE_RECIPIENT` — открытый ключ `age1…`. Им можно только зашифровать, поэтому даже со
+  взломанного сервера старые бэкапы не прочитать.
+- `BACKUP_TELEGRAM_BOT_TOKEN`, `BACKUP_TELEGRAM_CHAT_ID` — бот и чат, куда приходят копии.
+
+Секретный ключ лежит на Маке в `~/.config/starter/backup-age-key.txt`, копия — в менеджере паролей.
+На сервере его нет и быть не должно. Потерять его — потерять все бэкапы.
+
+Восстановить с Мака (текущие данные БД заменятся данными дампа; файл — из Telegram или с сервера):
+
+```bash
+age -d -i ~/.config/starter/backup-age-key.txt ~/Downloads/starter-2026-10-03-0330.sql.gz.age \
+  | gunzip \
+  | ssh starter 'cd /opt/starter/starter-backend/deploy && docker compose exec -T mariadb sh -c '\''MYSQL_PWD="$MARIADB_ROOT_PASSWORD" exec mariadb -uroot "$MARIADB_DATABASE"'\'''
+```
+
+Сделать бэкап вручную: `ssh starter /opt/starter/starter-backend/deploy/backup.sh`.
+
 ## Частые команды
 
 ```bash
@@ -92,11 +118,13 @@ docker compose exec php php artisan tinker
 docker compose restart php                # после правки deploy/.env
 ```
 
-Тестовые пользователи (`admin@`, `ivan@`, `maria@example.com`, пароль `Password123`) созданы сидером.
-Пересоздать БД с нуля (все данные пропадут):
+Моковых пользователей на проде нет: сидер в `APP_ENV=production` их не создаёт. Аккаунты заводятся
+через регистрацию на сайте.
+
+Пересоздать БД с нуля (все данные пропадут, сначала сделайте бэкап — раздел «Бэкапы»):
 
 ```bash
-docker compose exec php php artisan migrate:fresh --seed --force
+docker compose exec php php artisan migrate:fresh --force
 ```
 
 ## Первая установка на чистый сервер
@@ -112,7 +140,8 @@ git clone https://github.com/Nikolas-Bars/starter-frontend.git
 cd starter-backend/deploy
 cp .env.example .env    # заполнить ACME_EMAIL, APP_KEY и пароли
 docker compose up -d --build --wait
-docker compose exec php php artisan migrate --seed --force
+docker compose exec php php artisan migrate --force
+./backup.sh --install   # ежедневный бэкап БД, раздел «Бэкапы»
 ```
 
 DNS (Cloudflare): записи `A @` и `A turn` → IP сервера в режиме «DNS only» (серое облако).

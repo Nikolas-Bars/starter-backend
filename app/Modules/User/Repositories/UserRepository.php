@@ -30,7 +30,8 @@ final class UserRepository extends BaseRepository
     }
 
     /**
-     * Все пользователи, кроме указанного, по имени; поиск — по вхождению в имя, email или ник.
+     * Все пользователи, кроме указанного, по имени; поиск — по вхождению в имя или ник и по точному email.
+     * Email ищется только целиком: по частям его можно было бы подобрать посимвольно.
      *
      * @return LengthAwarePaginator<int, User>
      */
@@ -41,8 +42,8 @@ final class UserRepository extends BaseRepository
 
         if ($search !== null) {
             $pattern = '%' . $search . '%';
-            $query->where(static function (Builder $query) use ($pattern): void {
-                $query->getQuery()->whereLike('name', $pattern)->orWhereLike('email', $pattern)->orWhereLike('username', $pattern);
+            $query->where(static function (Builder $query) use ($pattern, $search): void {
+                $query->getQuery()->whereLike('name', $pattern)->orWhereLike('username', $pattern)->orWhere('email', $search);
             });
         }
 

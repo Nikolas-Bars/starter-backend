@@ -22,10 +22,11 @@ final class ListUsersControllerTest extends TestCase
             ->assertJsonPath('data.items.0.name', 'Иван Петров')
             ->assertJsonPath('data.items.1.name', 'Мария Смирнова')
             ->assertJsonPath('data.meta.total', 2)
+            ->assertJsonPath('data.items.0.email', null)
             ->assertJsonMissingPath('data.items.0.password');
     }
 
-    public function testSearchesByNameAndEmail(): void
+    public function testSearchesByNameAndExactEmail(): void
     {
         $this->actingAsUser();
         User::factory()->create(['name' => 'Иван Петров', 'email' => 'ivan@example.com']);
@@ -34,12 +35,16 @@ final class ListUsersControllerTest extends TestCase
         $this->getJson('/api/users?' . \http_build_query(['search' => 'Петров']))
             ->assertOk()
             ->assertJsonCount(1, 'data.items')
-            ->assertJsonPath('data.items.0.email', 'ivan@example.com');
+            ->assertJsonPath('data.items.0.name', 'Иван Петров');
 
-        $this->getJson('/api/users?' . \http_build_query(['search' => 'maria@']))
+        $this->getJson('/api/users?' . \http_build_query(['search' => 'maria@example.com']))
             ->assertOk()
             ->assertJsonCount(1, 'data.items')
             ->assertJsonPath('data.items.0.name', 'Мария');
+
+        $this->getJson('/api/users?' . \http_build_query(['search' => 'maria@']))
+            ->assertOk()
+            ->assertJsonCount(0, 'data.items');
     }
 
     public function testSearchesByUsernameWithOrWithoutAt(): void
