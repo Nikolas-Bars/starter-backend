@@ -81,8 +81,9 @@ services:
       - --listening-port=3478
       - --external-ip=${PUBLIC_IP}
       - --realm=${DOMAIN}
-      - --lt-cred-mech
-      - --user=${CALL_TURN_USERNAME}:${CALL_TURN_CREDENTIAL}
+      # Временные логины, которые выдаёт API (GET /api/calls/ice-servers), подписаны этим секретом
+      - --use-auth-secret
+      - --static-auth-secret=${CALL_TURN_SECRET:?Задайте CALL_TURN_SECRET в deploy/.env}
       - --min-port=49160
       - --max-port=49200
       - --fingerprint

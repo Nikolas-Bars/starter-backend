@@ -10,24 +10,31 @@ use App\Modules\Call\Actions\EndCallAction;
 use App\Modules\Call\Actions\InitiateCallAction;
 use App\Modules\Call\Actions\MarkMissedCallsAction;
 use App\Modules\Call\Actions\RejectCallAction;
+use App\Modules\Call\Actions\ResumeCallAction;
 use App\Modules\Call\Enums\CallStatusEnum;
+use App\Modules\Call\Exceptions\InvalidCallStateException;
 use App\Modules\Call\Exceptions\NotCallParticipantException;
 use App\Modules\Call\Http\Resources\CallResource;
 use App\Modules\Call\Models\Call;
 use App\Modules\User\Models\User;
 use App\Services\Translator;
+use Illuminate\Support\Facades\Config;
 use JsonException;
 
 /**
  * Протокол сигнализации. Каждое сообщение — JSON вида {"type": "...", "data": {...}}.
  *
- * От клиента: ping, call.invite {callee_id}, call.accept|call.reject|call.hangup {call_id},
+ * От клиента: ping, call.invite {callee_id}, call.accept|call.reject|call.hangup|call.resume {call_id},
  *             signal.offer|signal.answer|signal.ice {call_id, payload}.
- * От сервера: ready, pong, call.ringing, call.incoming, call.accepted {call},
- *             call.ended {call, reason}, signal.* {call_id, payload}, error {request, message}.
+ * От сервера: ready, pong, call.ringing, call.incoming, call.accepted, call.resumed {call},
+ *             call.ended {call, reason}, signal.* {call_id, payload},
+ *             presence.snapshot {user_ids}, presence.changed {user_id, online}, error {request, message}.
  *
  * Звонок меняет состояние только через Actions; offer/answer/ICE в БД не пишутся,
  * а пересылаются собеседнику как есть.
+ *
+ * Если во время разговора соединение участника оборвалось, разговор ждёт его
+ * calls.websocket.resume_timeout секунд: клиент переподключается и присылает call.resume.
  */
 final class MessageRouter
 {
@@ -49,7 +56,28 @@ final class MessageRouter
         private readonly RejectCallAction      $rejectCallAction,
         private readonly EndCallAction         $endCallAction,
         private readonly MarkMissedCallsAction $markMissedCallsAction,
+        private readonly ResumeCallAction      $resumeCallAction,
     ) {
+    }
+
+    /**
+     * Соединение прошло авторизацию: клиент получает «готово» и список тех, кто в сети,
+     * а остальные узнают, что пользователь появился.
+     */
+    public function connected(Connection $connection): void
+    {
+        $user = $connection->user;
+
+        if ($user === null) {
+            return;
+        }
+
+        $connection->send(['type' => 'ready', 'data' => ['user_id' => $user->id]]);
+        $connection->send(['type' => 'presence.snapshot', 'data' => ['user_ids' => $this->registry->onlineUserIds()]]);
+
+        if (\count($this->registry->forUser($user->id)) === 1) {
+            $this->broadcastPresence($user->id, true, $connection);
+        }
     }
 
     public function handle(Connection $connection, string $raw): void
@@ -81,31 +109,48 @@ final class MessageRouter
     }
 
     /**
-     * Соединение закрылось: если в нём шёл звонок, он завершается и собеседник об этом узнаёт.
+     * Соединение закрылось. Вызов, на который ещё не ответили, завершается сразу;
+     * идущий разговор ждёт, что участник переподключится.
      */
-    public function disconnect(Connection $connection): void
+    public function disconnect(Connection $connection, ?float $now = null): void
     {
         $callId = $this->registry->remove($connection);
         $user   = $connection->user;
 
-        if ($callId === null || $user === null) {
+        if ($user === null) {
             return;
         }
 
-        try {
-            $this->notifyEnded($this->endCallAction->run($user, $callId));
-        } catch (ApiException) {
-            $this->registry->releaseCall($callId);
+        if (!$this->registry->isOnline($user->id)) {
+            $this->broadcastPresence($user->id, false);
         }
+
+        if ($callId === null) {
+            return;
+        }
+
+        if ($this->registry->isAnswered($callId)) {
+            $until = ($now ?? \microtime(true)) + Config::integer('calls.websocket.resume_timeout');
+            $this->registry->suspend($callId, $user, $until);
+
+            return;
+        }
+
+        $this->endFor($user, $callId);
     }
 
     /**
-     * Раз в секунду: вызовы, на которые не ответили вовремя, становятся пропущенными.
+     * Раз в секунду: вызовы, на которые не ответили вовремя, становятся пропущенными,
+     * а разговоры, куда участник не вернулся после обрыва, завершаются.
      */
-    public function tick(int $ringTimeoutSeconds): void
+    public function tick(int $ringTimeoutSeconds, ?float $now = null): void
     {
         foreach ($this->markMissedCallsAction->run($ringTimeoutSeconds) as $call) {
             $this->notifyEnded($call);
+        }
+
+        foreach ($this->registry->pullExpiredSuspensions($now ?? \microtime(true)) as $expired) {
+            $this->endFor($expired['user'], $expired['callId']);
         }
     }
 
@@ -139,6 +184,9 @@ final class MessageRouter
             case 'call.hangup':
                 $this->notifyEnded($this->endCallAction->run($user, $this->intField($data, 'call_id')));
                 break;
+            case 'call.resume':
+                $this->resume($connection, $user, $this->intField($data, 'call_id'));
+                break;
             default:
                 throw new InvalidMessageException();
         }
@@ -171,6 +219,7 @@ final class MessageRouter
     {
         $call = $this->acceptCallAction->run($callee, $callId);
         $this->registry->bindCall($call->id, $connection);
+        $this->registry->markAnswered($call->id);
 
         $accepted = ['type' => 'call.accepted', 'data' => ['call' => $this->present($call)]];
         $ended    = ['type' => 'call.ended', 'data' => ['call' => $this->present($call), 'reason' => self::REASON_ANSWERED_ELSEWHERE]];
@@ -179,6 +228,40 @@ final class MessageRouter
 
         foreach ($this->registry->forUser($callee->id) as $calleeConnection) {
             $calleeConnection->send($calleeConnection === $connection ? $accepted : $ended);
+        }
+    }
+
+    /**
+     * @throws ApiException
+     */
+    private function resume(Connection $connection, User $user, int $callId): void
+    {
+        $call = $this->resumeCallAction->run($user, $callId);
+
+        if (!$this->registry->resume($call->id, $connection)) {
+            throw new InvalidCallStateException();
+        }
+
+        $connection->send(['type' => 'call.resumed', 'data' => ['call' => $this->present($call)]]);
+    }
+
+    private function endFor(User $user, int $callId): void
+    {
+        try {
+            $this->notifyEnded($this->endCallAction->run($user, $callId));
+        } catch (ApiException) {
+            $this->registry->releaseCall($callId);
+        }
+    }
+
+    private function broadcastPresence(int $userId, bool $online, ?Connection $except = null): void
+    {
+        $message = ['type' => 'presence.changed', 'data' => ['user_id' => $userId, 'online' => $online]];
+
+        foreach ($this->registry->authenticated() as $connection) {
+            if ($connection !== $except) {
+                $connection->send($message);
+            }
         }
     }
 

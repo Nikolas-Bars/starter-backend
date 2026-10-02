@@ -23,6 +23,18 @@ ssh starter
 
 Открытые порты (ufw): 22, 80, 443 (tcp/udp), 3478 (tcp/udp), 49160–49200/udp (медиа через TURN).
 
+Логины TURN временные: coturn проверяет их по общему секрету `CALL_TURN_SECRET`, а API выдаёт
+каждому пользователю свой логин на `CALL_TURN_TTL` секунд. Без `CALL_TURN_SECRET` в `deploy/.env`
+`docker compose` откажется запускаться. Переход со старых постоянных логинов:
+
+```bash
+ssh starter
+cd /opt/starter/starter-backend/deploy
+echo "CALL_TURN_SECRET=$(openssl rand -hex 32)" >> .env   # CALL_TURN_USERNAME/CREDENTIAL больше не нужны
+```
+
+Сделать это нужно до мёржа изменений: деплой пересоздаст coturn уже с новым секретом.
+
 ## Как вносить изменения
 
 Прямой пуш в `main` закрыт: изменения попадают туда только через Pull Request с зелёными проверками.

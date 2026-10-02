@@ -23,7 +23,7 @@ make start
 | API       | http://localhost:8090/api                 |
 | Swagger   | http://localhost:8090/api/documentation   |
 | Healthcheck | http://localhost:8090/up                |
-| Звонки (WebSocket) | ws://localhost:8091?token=<access_token> |
+| Звонки (WebSocket) | ws://localhost:8091?ticket=<билет из POST /api/calls/ws-ticket> |
 | MariaDB   | localhost:33070 (starter / user / user)   |
 | Redis     | localhost:6390                            |
 
@@ -75,6 +75,9 @@ curl http://localhost:8090/api/auth/me -H 'Authorization: Bearer <access_token>'
   (проверка против фиктивного хэша, если пользователь не найден).
 - Лимиты: вход — 5 попыток в минуту на пару email + IP, регистрация — 10 в минуту на IP.
 - CORS открыт только для `CORS_ALLOWED_ORIGINS` (по умолчанию фронт `http://localhost:5190`).
+- Сервер звонков принимает не токен, а одноразовый билет на 30 секунд (`POST /api/calls/ws-ticket`):
+  адрес сокета попадает в логи прокси, и токен там оседать не должен.
+- Логины TURN временные и у каждого пользователя свои, если задан `CALL_TURN_SECRET`.
 
 ## Команды
 
