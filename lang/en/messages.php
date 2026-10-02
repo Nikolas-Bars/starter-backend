@@ -12,6 +12,7 @@ return [
     'call' => [
         'history'     => 'Call history.',
         'ice_servers' => 'Call connection settings.',
+        'ws_ticket'   => 'Connection ticket issued.',
     ],
     'user' => [
         'list' => 'User list.',

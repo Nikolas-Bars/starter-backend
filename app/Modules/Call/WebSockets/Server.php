@@ -246,9 +246,9 @@ final class Server
         $connection->queueRaw($this->handshake->accept($request));
         $connection->upgraded = true;
 
-        // Рукопожатие завершаем и при неверном токене: так браузер получит код закрытия 4401
+        // Рукопожатие завершаем и при неверном билете: так браузер получит код закрытия 4401
         // и поймёт, что переподключаться бессмысленно (ответ 401 на рукопожатие JS не видит)
-        $user = $this->authenticateWebSocketAction->run($request->query('token') ?? '');
+        $user = $this->authenticateWebSocketAction->run($request->query('ticket') ?? '');
 
         if ($user === null) {
             $connection->close(self::CLOSE_UNAUTHORIZED, 'Unauthorized');
@@ -257,7 +257,7 @@ final class Server
         }
 
         $this->registry->authenticate($connection, $user);
-        $connection->send(['type' => 'ready', 'data' => ['user_id' => $user->id]]);
+        $this->router->connected($connection);
 
         return true;
     }

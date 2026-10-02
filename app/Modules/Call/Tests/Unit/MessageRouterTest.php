@@ -141,16 +141,107 @@ final class MessageRouterTest extends TestCase
         self::assertNull($this->registry->callOf($alice));
     }
 
-    public function testDisconnectDuringCallEndsItForPeer(): void
+    public function testDisconnectDuringCallWaitsForParticipantAndEndsAfterTimeout(): void
     {
-        [$alice, $bobLaptop, , $callId] = $this->ringBobOnTwoTabs();
+        [$alice, $bobLaptop, $bobPhone, $callId] = $this->ringBobOnTwoTabs();
         $this->send($bobLaptop, 'call.accept', ['call_id' => $callId]);
-        $this->drain($alice, $bobLaptop);
+        $this->drain($alice, $bobLaptop, $bobPhone);
 
-        $this->router->disconnect($bobLaptop);
+        $this->router->disconnect($bobLaptop, now: 1000.0);
+        $this->router->tick(30, now: 1019.0);
+
+        self::assertSame([], $this->messages($alice));
+        self::assertSame(CallStatusEnum::Active, Call::query()->findOrFail($callId)->status);
+
+        $this->router->tick(30, now: 1020.0);
 
         self::assertSame('ended', $this->dataPath($this->messages($alice)[0], 'reason'));
         self::assertSame(CallStatusEnum::Ended, Call::query()->findOrFail($callId)->status);
+    }
+
+    public function testParticipantResumesCallFromNewConnection(): void
+    {
+        [$alice, $bobLaptop, $bobPhone, $callId] = $this->ringBobOnTwoTabs();
+        $this->send($bobLaptop, 'call.accept', ['call_id' => $callId]);
+        $this->drain($alice, $bobLaptop, $bobPhone);
+
+        $this->router->disconnect($bobLaptop, now: 1000.0);
+        $bobAgain = $this->connect($this->bob);
+        $this->send($bobAgain, 'call.resume', ['call_id' => $callId]);
+
+        self::assertSame(['call.resumed'], $this->types($bobAgain));
+
+        $this->router->tick(30, now: 2000.0);
+        self::assertSame(CallStatusEnum::Active, Call::query()->findOrFail($callId)->status);
+
+        $this->send($alice, 'signal.offer', ['call_id' => $callId, 'payload' => self::OFFER]);
+        self::assertSame(['signal.offer'], $this->types($bobAgain));
+    }
+
+    public function testResumeReplacesConnectionServerHasNotNoticedIsDead(): void
+    {
+        [$alice, $bobLaptop, $bobPhone, $callId] = $this->ringBobOnTwoTabs();
+        $this->send($bobLaptop, 'call.accept', ['call_id' => $callId]);
+        $this->drain($alice, $bobLaptop, $bobPhone);
+
+        $bobAgain = $this->connect($this->bob);
+        $this->send($bobAgain, 'call.resume', ['call_id' => $callId]);
+        $this->drain($bobAgain);
+
+        $this->router->disconnect($bobLaptop, now: 1000.0);
+        $this->router->tick(30, now: 2000.0);
+
+        self::assertSame(CallStatusEnum::Active, Call::query()->findOrFail($callId)->status);
+        self::assertSame($callId, $this->registry->callOf($bobAgain));
+    }
+
+    public function testCannotResumeFinishedOrForeignCall(): void
+    {
+        [$alice, $bobLaptop, $bobPhone, $callId] = $this->ringBobOnTwoTabs();
+
+        $this->send($bobPhone, 'call.resume', ['call_id' => $callId]);
+        self::assertSame('call.resume', $this->dataPath($this->messages($bobPhone)[0], 'request'));
+
+        $this->send($bobLaptop, 'call.accept', ['call_id' => $callId]);
+        $this->drain($alice, $bobLaptop, $bobPhone);
+
+        $carol = $this->connect(User::factory()->create());
+        $this->send($carol, 'call.resume', ['call_id' => $callId]);
+        self::assertSame(['error'], $this->types($carol));
+    }
+
+    public function testDisconnectWhileRingingEndsCallImmediately(): void
+    {
+        [$alice, $bobLaptop, $bobPhone, $callId] = $this->ringBobOnTwoTabs();
+
+        $this->router->disconnect($alice);
+
+        foreach ([$bobLaptop, $bobPhone] as $tab) {
+            self::assertSame(['presence.changed', 'call.ended'], $this->types($tab));
+        }
+        self::assertSame(CallStatusEnum::Missed, Call::query()->findOrFail($callId)->status);
+    }
+
+    public function testGreetsWithOnlineUsersAndAnnouncesPresence(): void
+    {
+        $alice = $this->connect($this->alice, greet: true);
+
+        self::assertSame(['ready', 'presence.snapshot'], $this->types($alice));
+
+        $bobLaptop = $this->connect($this->bob, greet: true);
+        $snapshot  = $this->messages($bobLaptop)[1];
+        self::assertEqualsCanonicalizing([$this->alice->id, $this->bob->id], $this->dataPath($snapshot, 'user_ids'));
+        self::assertSame([['type' => 'presence.changed', 'data' => ['user_id' => $this->bob->id, 'online' => true]]], $this->messages($alice));
+
+        $bobPhone = $this->connect($this->bob, greet: true);
+        $this->drain($bobLaptop, $bobPhone);
+        self::assertSame([], $this->messages($alice), 'Вторая вкладка — не новость');
+
+        $this->router->disconnect($bobPhone);
+        self::assertSame([], $this->messages($alice));
+
+        $this->router->disconnect($bobLaptop);
+        self::assertSame([['type' => 'presence.changed', 'data' => ['user_id' => $this->bob->id, 'online' => false]]], $this->messages($alice));
     }
 
     public function testUnansweredCallBecomesMissed(): void
@@ -210,13 +301,20 @@ final class MessageRouterTest extends TestCase
         return [$alice, $bobLaptop, $bobPhone, $callId];
     }
 
-    private function connect(User $user): Connection
+    /**
+     * @param bool $greet Как на сервере: ready, список тех, кто в сети, и оповещение остальных
+     */
+    private function connect(User $user, bool $greet = false): Connection
     {
         $connection           = new Connection($this->nextConnectionId++, $this->codec, 0.0);
         $connection->upgraded = true;
 
         $this->registry->add($connection);
         $this->registry->authenticate($connection, $user);
+
+        if ($greet) {
+            $this->router->connected($connection);
+        }
 
         return $connection;
     }
