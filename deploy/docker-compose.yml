@@ -13,8 +13,11 @@ services:
     environment:
       # Ключ Firebase для push (deploy/README.md, «Push-уведомления»). Нет файла — push выключены
       FCM_CREDENTIALS: /run/secrets/starter/firebase-credentials.json
+      # Файлы чатов. Тот же том Caddy отдаёт по подписанным ссылкам, бэкап копирует его в R2
+      ATTACHMENTS_PATH: /var/www/attachments
     volumes:
       - ./secrets:/run/secrets/starter:ro
+      - attachments:/var/www/attachments
     depends_on:
       mariadb:
         condition: service_healthy
@@ -73,6 +76,7 @@ services:
       ACME_EMAIL: ${ACME_EMAIL}
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - attachments:/attachments:ro
       - caddy_data:/data
       - caddy_config:/config
     depends_on:
@@ -112,6 +116,7 @@ services:
 
 volumes:
   mariadb:
+  attachments:
   redis:
   caddy_data:
   caddy_config:

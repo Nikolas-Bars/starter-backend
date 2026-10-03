@@ -44,8 +44,11 @@ final class ChatMessageRepository extends BaseRepository
             'body'      => $body,
         ]);
 
-        // У нового сообщения реакций нет: не делаем за этим лишний запрос
-        return $message->setRelation('reactions', new Collection())->setRelation('call', $call);
+        // У нового сообщения реакций и вложений нет: не делаем за этим лишний запрос
+        return $message
+            ->setRelation('reactions', new Collection())
+            ->setRelation('attachments', new Collection())
+            ->setRelation('call', $call);
     }
 
     public function loadReactions(ChatMessage $message): ChatMessage
@@ -60,7 +63,7 @@ final class ChatMessageRepository extends BaseRepository
      */
     public function latestBefore(int $chatId, ?int $beforeId, int $limit): Collection
     {
-        $query = $this->query()->where('chat_id', $chatId)->with(['reactions', 'call']);
+        $query = $this->query()->where('chat_id', $chatId)->with(['reactions', 'call', 'attachments']);
 
         if ($beforeId !== null) {
             $query->getQuery()->where('id', '<', $beforeId);

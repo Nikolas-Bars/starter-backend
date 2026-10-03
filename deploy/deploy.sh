@@ -12,6 +12,8 @@ git -C .. pull --ff-only
 git -C ../../starter-frontend pull --ff-only
 
 docker compose up -d --build --wait --remove-orphans
+# Caddyfile подключён томом: правку в нём контейнер сам не заметит
+docker compose exec -T web caddy reload --config /etc/caddy/Caddyfile
 docker compose exec -T php php artisan migrate --force
 
 docker image prune -f > /dev/null

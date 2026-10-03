@@ -17,14 +17,15 @@ use Illuminate\Support\Carbon;
 /**
  * @property      int                                  $id
  * @property      int                                  $chat_id
- * @property      int                                  $user_id    Автор
- * @property      string                               $client_id  UUID, выбранный клиентом: повторная отправка не создаёт дубль
+ * @property      int                                  $user_id     Автор
+ * @property      string                               $client_id   UUID, выбранный клиентом: повторная отправка не создаёт дубль
  * @property      ChatMessageTypeEnum                  $type
- * @property      int|null                             $call_id    Для type = call
- * @property      string                               $body       У служебных сообщений пустой
+ * @property      int|null                             $call_id     Для type = call
+ * @property      string                               $body        У служебных сообщений пустой; у сообщения с файлами — подпись или пусто
  * @property-read Carbon|null                          $created_at
  * @property-read Carbon|null                          $updated_at
  * @property-read Collection<int, ChatMessageReaction> $reactions
+ * @property-read Collection<int, ChatAttachment>      $attachments
  * @property-read Call|null                            $call
  */
 final class ChatMessage extends Model
@@ -60,6 +61,17 @@ final class ChatMessage extends Model
         $reactions->getQuery()->getQuery()->orderBy('id');
 
         return $reactions;
+    }
+
+    /**
+     * @return HasMany<ChatAttachment, $this>
+     */
+    public function attachments(): HasMany
+    {
+        $attachments = $this->hasMany(ChatAttachment::class, 'message_id');
+        $attachments->getQuery()->getQuery()->orderBy('id');
+
+        return $attachments;
     }
 
     /**

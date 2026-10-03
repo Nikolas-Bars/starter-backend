@@ -83,7 +83,7 @@ final class ChatRepository extends BaseRepository
             ->whereHas('members', static function (Builder $members) use ($userId): void {
                 $members->getQuery()->where('user_id', $userId);
             })
-            ->with(['members.user', 'lastMessage.reactions', 'lastMessage.call'])
+            ->with(['members.user', 'lastMessage.reactions', 'lastMessage.call', 'lastMessage.attachments'])
             ->withCount(['messages as unread_count' => static function (Builder $messages) use ($userId): void {
                 ChatMessageRepository::whereUnreadBy($messages, $userId);
             }]);

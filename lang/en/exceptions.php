@@ -28,11 +28,14 @@ return [
     ],
 
     'chat' => [
-        'not_found'         => 'Chat not found.',
-        'invalid_peer'      => 'You cannot message this user.',
-        'message_not_found' => 'Message not found.',
-        'folder_not_found'  => 'Folder not found.',
-        'folder_limit'      => 'You can have at most 20 folders.',
+        'not_found'            => 'Chat not found.',
+        'invalid_peer'         => 'You cannot message this user.',
+        'message_not_found'    => 'Message not found.',
+        'folder_not_found'     => 'Folder not found.',
+        'folder_limit'         => 'You can have at most 20 folders.',
+        'attachment_not_found' => 'File not found or already sent.',
+        'storage_full'         => 'File storage is full. Please try again later.',
+        'file_forbidden'       => 'The file link is invalid or has expired.',
     ],
 
     'user' => [

@@ -30,6 +30,17 @@ return [
 
     'disks' => [
 
+        // Вложения чатов (config/attachments.php). В проде — том, который Caddy отдаёт по подписанным ссылкам
+        'attachments' => [
+            'driver' => 'local',
+            'root'   => env('ATTACHMENTS_PATH', storage_path('app/attachments')),
+            // Caddy читает файлы из того же тома под своим пользователем
+            'visibility'           => 'public',
+            'directory_visibility' => 'public',
+            'throw'                => true,
+            'report'               => false,
+        ],
+
         'local' => [
             'driver' => 'local',
             'root'   => storage_path('app/private'),

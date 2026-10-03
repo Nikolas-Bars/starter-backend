@@ -39,6 +39,23 @@ docker compose exec -T mariadb sh -c \
     'MYSQL_PWD="$MARIADB_ROOT_PASSWORD" exec mariadb -uroot "$MARIADB_DATABASE"' \
     < "$work/database.sql"
 docker compose exec -T php php artisan migrate --force
+
+# Файлы чатов — из R2, ключи и пароль шифрования уже в deploy/.env из архива
+env_value() {
+    grep -E "^$1=" .env | tail -n 1 | cut -d= -f2- | sed -E 's/^"(.*)"$/\1/' || true
+}
+# shellcheck source=r2.sh
+source ./r2.sh
+if r2_enabled; then
+    r2_configure
+    dir=$(attachments_dir)
+    rclone copy "$R2_CURRENT" "$dir" --transfers 8 -q
+    chown -R 33:33 "$dir"
+    echo "Файлы чатов восстановлены из R2: $(du -sh "$dir" | cut -f1)"
+else
+    echo "Ключей R2 в deploy/.env нет — файлы чатов не восстановлены"
+fi
+
 # Сервер звонков и очередь держат состояние в памяти — перезапуск после смены БД
 docker compose restart php
 

@@ -7,6 +7,7 @@ namespace App\Modules\Chat\Providers;
 use App\Providers\LoadModuleProvider;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Config;
 use Illuminate\Support\Facades\RateLimiter;
 
 final class ChatServiceProvider extends LoadModuleProvider
@@ -21,6 +22,7 @@ final class ChatServiceProvider extends LoadModuleProvider
 
         RateLimiter::for('chat-message', static fn(Request $request): Limit => self::perUser($request, self::MESSAGES_PER_MINUTE));
         RateLimiter::for('chat-reaction', static fn(Request $request): Limit => self::perUser($request, self::REACTIONS_PER_MINUTE));
+        RateLimiter::for('chat-attachment', static fn(Request $request): Limit => self::perUser($request, Config::integer('attachments.uploads_per_minute')));
     }
 
     private static function perUser(Request $request, int $perMinute): Limit
