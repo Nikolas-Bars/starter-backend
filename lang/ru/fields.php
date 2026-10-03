@@ -33,6 +33,7 @@ return [
     ],
     'chat_attachment' => [
         'file'    => 'файл',
+        'name'    => 'имя файла',
         'voice'   => 'голосовое',
         'as_file' => 'без сжатия',
     ],

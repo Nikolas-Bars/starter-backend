@@ -16,6 +16,7 @@ use Illuminate\Support\Facades\Config;
  *     type="object",
  *     required={"file"},
  *     @OA\Property(property="file", type="string", format="binary", description="До 50 МБ"),
+ *     @OA\Property(property="name", type="string", maxLength=255, description="Имя для собеседника, если у загружаемого файла имя временное (выбранный на телефоне файл)"),
  *     @OA\Property(property="voice", type="boolean", description="Записанное голосовое: сохранится как голосовое, если это звук"),
  *     @OA\Property(property="as_file", type="boolean", description="Отправить как файл: фото и видео не сжимаются, открываются только на скачивание")
  * )
@@ -31,6 +32,7 @@ final class UploadChatAttachmentRequest extends FormRequest
     {
         return [
             'file'    => ['required', 'file', 'max:' . \intdiv(Config::integer('attachments.max_file_bytes'), 1024)],
+            'name'    => ['sometimes', 'nullable', 'string', 'max:255'],
             'voice'   => ['sometimes', 'boolean'],
             'as_file' => ['sometimes', 'boolean'],
         ];
@@ -49,9 +51,11 @@ final class UploadChatAttachmentRequest extends FormRequest
         /** @var UploadedFile $file */
         $file = $this->file('file');
 
+        $name = $this->string('name')->trim()->toString();
+
         return new UploadChatAttachmentDTO(
             file: $file,
-            original_name: self::cleanName($file->getClientOriginalName()),
+            original_name: self::cleanName($name === '' ? $file->getClientOriginalName() : $name),
             voice: $this->boolean('voice'),
             as_file: $this->boolean('as_file'),
         );

@@ -32,6 +32,7 @@ return [
     ],
     'chat_attachment' => [
         'file'    => 'file',
+        'name'    => 'file name',
         'voice'   => 'voice message',
         'as_file' => 'uncompressed',
     ],
