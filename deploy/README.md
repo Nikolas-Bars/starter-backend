@@ -21,6 +21,10 @@ ssh starter
 Код: `/opt/starter/starter-backend` и `/opt/starter/starter-frontend` — клоны репозиториев с GitHub.
 Настройки и секреты: `/opt/starter/starter-backend/deploy/.env` (в git не попадает, шаблон — `.env.example`).
 
+`php` читает `deploy/.env` только при создании контейнера: после правки нужен
+`docker compose up -d php` (пересоздаёт контейнер), `docker compose restart php` новых значений
+не увидит. `backup.sh` и `restore.sh` читают `.env` сами при каждом запуске.
+
 Открытые порты (ufw): 22, 80, 443 (tcp/udp), 3478 (tcp/udp), 49160–49200/udp (медиа через TURN).
 
 Логины TURN временные: coturn проверяет их по общему секрету `CALL_TURN_SECRET`, а API выдаёт
@@ -74,17 +78,22 @@ ssh starter /opt/starter/starter-backend/deploy/deploy.sh
 
 ```bash
 scp firebase-credentials.json starter:/opt/starter/starter-backend/deploy/secrets/
-ssh starter 'chmod 600 /opt/starter/starter-backend/deploy/secrets/firebase-credentials.json && cd /opt/starter/starter-backend/deploy && docker compose restart php'
+ssh starter 'chmod 600 /opt/starter/starter-backend/deploy/secrets/firebase-credentials.json && cd /opt/starter/starter-backend/deploy && docker compose up -d php'
 ```
 
 Без файла push выключены, а звонок собеседнику не в сети сразу завершается как «не в сети».
 
 ## Бэкапы
 
-Каждый день в 03:30 (время сервера, UTC) `deploy/backup.sh` собирает всё, чего нет в git, — дамп БД,
-`deploy/.env` и ключ Firebase — в один архив, шифрует его [age](https://age-encryption.org), кладёт
-в `/var/backups/starter/` (хранятся последние 14 дней) и присылает копию в Telegram. Этого архива
-достаточно, чтобы поднять всё на новом сервере (раздел «Переезд на новый сервер»).
+Каждый день в 03:30 (время сервера, UTC) `deploy/backup.sh` делает две копии:
+
+1. **База и настройки.** Всё, чего нет в git, — дамп БД, `deploy/.env` и ключ Firebase — в одном
+   архиве, зашифрованном [age](https://age-encryption.org). Архив кладётся в `/var/backups/starter/`
+   (хранятся последние 14 дней) и приходит в Telegram.
+2. **Файлы чатов** — в Cloudflare R2, зашифрованными (раздел «Файлы чатов»). В подписи к архиву
+   в Telegram видно, сколько файлов в R2, или «ОШИБКА», если копия не удалась.
+
+Архива и R2 достаточно, чтобы поднять всё на новом сервере (раздел «Переезд на новый сервер»).
 Расписание — `/etc/cron.d/starter-backup` (ставится командой `./backup.sh --install`),
 журнал — `/var/log/starter-backup.log`.
 
@@ -95,8 +104,14 @@ ssh starter 'chmod 600 /opt/starter/starter-backend/deploy/secrets/firebase-cred
 - `ADMIN_TELEGRAM_BOT_TOKEN`, `ADMIN_TELEGRAM_CHAT_ID` — бот и чат, куда приходят копии (и
   предупреждение, что место для файлов чатов кончается).
 
-Секретный ключ лежит на Маке в `~/.config/starter/backup-age-key.txt`, копия — в менеджере паролей.
-На сервере его нет и быть не должно. Потерять его — потерять все бэкапы.
+Ключи на Маке (`~/.config/starter/`, у всех права `600`), копии — в менеджере паролей:
+
+| Файл | Зачем |
+|---|---|
+| `backup-age-key.txt` | Секретный ключ age: без него архивы не расшифровать. На сервере его нет и быть не должно. Потерять его — потерять все бэкапы |
+| `attachments-crypt.env` | Пароль шифрования файлов в R2. Есть и в `deploy/.env` (а значит, в архиве) |
+| `r2.env` | Ключ доступа к бакету R2. Тоже есть в `deploy/.env` |
+| `dbeaver-password.txt` | Пароль пользователя `dbeaver` (раздел «База из DBeaver») |
 
 Восстановить с Мака (данные БД заменятся данными архива; файл — из Telegram или с сервера):
 
@@ -107,14 +122,18 @@ age -d -i ~/.config/starter/backup-age-key.txt ~/Downloads/starter-2026-10-03-03
 
 Посмотреть, что внутри архива: `age -d -i ~/.config/starter/backup-age-key.txt файл.tar.gz.age | tar -tzv`.
 Сделать бэкап вручную: `ssh starter /opt/starter/starter-backend/deploy/backup.sh`.
+Сверить копию файлов в R2 с диском (ничего не меняет, в конце — `0 differences found`):
+`ssh starter /opt/starter/starter-backend/deploy/backup.sh --check`.
 
 ## Файлы чатов
 
 Фото, видео, голосовые и файлы из чатов лежат в томе `starter_attachments` (на хосте —
-`docker volume inspect -f '{{ .Mountpoint }}' starter_attachments`). Всего — не больше 10 ГБ
-(`ATTACHMENTS_QUOTA_BYTES`): при 90% в Telegram приходит предупреждение, при 100% новые файлы
-не принимаются. Фото и видео сжимает очередь `media` (процесс `media` в supervisor); отдаёт файлы
-Caddy по подписанным ссылкам `/api/files/…`, подпись проверяет PHP.
+`docker volume inspect -f '{{ .Mountpoint }}' starter_attachments`). Один файл — до 50 МБ
+(`ATTACHMENTS_MAX_FILE_BYTES`), всего — не больше 10 ГБ (`ATTACHMENTS_QUOTA_BYTES`): при 90% в
+Telegram приходит предупреждение, при 100% новые файлы не принимаются. Фото, видео и голосовые
+сжимает очередь `media` (процесс `media` в supervisor, ffmpeg и Imagick в образе): фото — до 2560 px
+без EXIF и координат, видео — H.264 до 720p, голосовые — AAC 64 кбит/с. Отдаёт файлы Caddy по
+подписанным ссылкам `/api/files/…`, подпись проверяет PHP (`/api/attachments/authorize`).
 
 ```bash
 docker compose exec php php artisan attachments:usage                     # сколько занято
@@ -124,17 +143,30 @@ docker compose exec php php artisan attachments:prune --before=2026-01-01 # уд
 Сообщения при этом остаются, пропадают только вложения. Не отправленные за сутки файлы удаляются
 сами (раз в час).
 
-Копия — в Cloudflare R2, бакет `call-yansburg-files`: тот же `backup.sh` каждую ночь синхронизирует
-том с бакетом через rclone. Файлы шифруются на сервере (`rclone crypt`), удалённые с сервера ещё
-30 дней лежат в корзине бакета. `restore.sh` на новом сервере скачивает их обратно.
+Копия — в Cloudflare R2 (аккаунт `nikolasparaslovgp@gmail.com`, бесплатный тариф до 10 ГБ),
+бакет `call-yansburg-files`: тот же `backup.sh` каждую ночь синхронизирует том с бакетом через
+rclone. Файлы и их имена шифруются на сервере (`rclone crypt`) — в Cloudflare видна только
+зашифрованная каша. Удалённые с сервера файлы ещё 30 дней лежат в корзине бакета (`trash/`), так
+что случайно стёртый том не уничтожит копию следующей ночью. `restore.sh` на новом сервере
+скачивает файлы обратно.
 
 Настройки в `deploy/.env`:
 
 - `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_BUCKET` — ключ R2 (Cloudflare →
-  R2 → Manage API tokens, права Object Read & Write только на этот бакет).
+  Storage & databases → R2 Object Storage → API Tokens → Manage → Create Account API token,
+  права Object Read & Write только на этот бакет). Копия — `~/.config/starter/r2.env` на Маке.
 - `ATTACHMENTS_CRYPT_PASSWORD`, `ATTACHMENTS_CRYPT_SALT` — пароль шифрования. Сам `.env` лежит в
   зашифрованном бэкапе, поэтому пароль восстановится вместе с ним; копия — в
-  `~/.config/starter/attachments-crypt.env` на Маке.
+  `~/.config/starter/attachments-crypt.env` на Маке. Поменять пароль — значит перезалить всё
+  заново: старая копия новым паролем не читается.
+
+Без этих ключей `backup.sh` копирует только базу и пишет в подписи «файлы чатов в R2 не
+копируются». Включить на сервере (ключи уходят через stdin, в истории команд их нет):
+
+```bash
+cat ~/.config/starter/r2.env ~/.config/starter/attachments-crypt.env \
+  | ssh starter 'cd /opt/starter/starter-backend/deploy && cat >> .env && ./backup.sh --install && ./backup.sh'
+```
 
 ## База из DBeaver
 
@@ -164,7 +196,8 @@ docker compose ps                         # что запущено
 docker compose logs -f php                # логи API и сервера звонков
 docker compose logs -f web                # логи Caddy (в том числе выпуск сертификата)
 docker compose exec php php artisan tinker
-docker compose restart php                # после правки deploy/.env
+docker compose up -d php                  # после правки deploy/.env (restart её не перечитывает)
+docker compose restart php                # просто перезапустить API, сервер звонков и очереди
 ```
 
 Моковых пользователей на проде нет: сидер в `APP_ENV=production` их не создаёт. Аккаунты заводятся
@@ -232,7 +265,9 @@ gh workflow run deploy.yml -R Nikolas-Bars/starter-backend   # проверит�
 ```
 
 **6. Проверить:** открывается https://call-yansburg.com, вход, звонок между двумя устройствами,
-`ssh starter /opt/starter/starter-backend/deploy/backup.sh` присылает бэкап в Telegram.
+в чатах открываются старые фото, `ssh starter /opt/starter/starter-backend/deploy/backup.sh --check`
+находит 0 расхождений, а `ssh starter /opt/starter/starter-backend/deploy/backup.sh` присылает бэкап
+в Telegram.
 Мобильное приложение ходит по домену — пересобирать его не нужно.
 
 Без бэкапа (только код): вместо шага 4 `cp .env.example .env`, заполнить его (секреты сгенерировать

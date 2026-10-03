@@ -1,9 +1,12 @@
-# Starter API
+# Kolyansburg API
 
 ## Project Overview
 
-Laravel 12 REST API starter: registration, token login, mock users. PHP 8.3, RoadRunner HTTP server,
-MariaDB 11.4, Redis 7, Laravel Sanctum (Bearer tokens). Detailed rules: `ARCHITECTURE.md`.
+Backend of Kolyansburg, a family messenger (https://call-yansburg.com; clients `../starter-frontend` and
+`../starter-mobile`): chats with folders, reactions and attachments, 1:1 WebRTC calls, call links with guests,
+call push. Laravel 12, PHP 8.3, RoadRunner HTTP server, MariaDB 11.4, Redis 7, Laravel Sanctum (Bearer
+tokens), ffmpeg + Imagick for media. The user-facing name comes from `APP_NAME`. Detailed rules:
+`ARCHITECTURE.md`; production: `deploy/README.md`.
 
 ## Architecture
 
@@ -48,13 +51,30 @@ replaces it), emoji from `ChatReactionEnum` (mirrored in the frontend); messages
 [{emoji, user_ids}]`. Folders are private to their owner: `GET|POST chat-folders`, `PATCH|DELETE
 chat-folders/{id}`, `PUT|DELETE chat-folders/{id}/chats/{chatId}`, max 20; `GET chats?folder_id=` filters
 the list; a folder carries `chat_ids` and `unread_chats_count`.
+Attachments (`config/attachments.php`): `POST attachments` (multipart `file`, optional `name` — phones send
+the real file name because pickers hand over UUID cache files, `voice`, `as_file`; `throttle:chat-attachment`)
+stores the upload on the `attachments` disk and returns a `ChatAttachmentResource` without a message;
+`POST chats/{id}/messages {attachment_ids}` (max 10, body optional then) attaches the sender's own unsent
+uploads. Images, videos and voice get `status = processing` and `ProcessChatAttachmentJob` on the `media`
+queue (`MediaProcessor`: Imagick strips EXIF/GPS and auto-rotates, ffmpeg makes H.264 ≤1280 px / AAC, voice
+gets a waveform); the original is deleted, then `chat.attachment {chat_id, message_id, attachment}` goes to
+the members over the RealtimeBus. Broken media becomes `failed`, never a queue crash. Resource URLs are relative
+`/api/files/{path}?expires&signature` (`FileUrlSigner`, HMAC with the app key, valid until the end of the next
+UTC day). In prod Caddy serves `/api/files/*` itself after `forward_auth` to `GET attachments/authorize`;
+locally `ServeChatFileController` streams the file. A quota (`ATTACHMENTS_QUOTA_BYTES`, 10 GB) rejects uploads
+with 507; at 90% `NotifyChatStorageUsageTask` pings the admin Telegram (`services.telegram`, re-armed below
+85%). `attachments:prune` (hourly) drops uploads never sent within `orphan_ttl_hours`; `attachments:prune
+--before=DATE` frees space; `attachments:usage` prints usage. Pruning deletes the rows and files but keeps
+messages: one left with no body and no attachments shows «Файл удалён» in the clients. Nightly encrypted copy
+to R2: `deploy/backup.sh`.
 
 Realtime from the API to browsers: HTTP workers cannot see open sockets, so Actions publish events to
 `App\Services\RealtimeBus` (a Redis list, `config/realtime.php`; the `array` driver keeps them in memory for
 tests) after the transaction commits. The WebSocket server drains the bus every loop (`socket_select` waits at
 most 0.1 s) and `MessageRouter::flushRealtime()` sends each event to every tab of its `user_ids`.
 Chat events: `chat.message {message}`, `chat.read {chat_id, user_id, last_read_message_id, unread_count}`,
-`chat.reaction {chat_id, message_id, reactions}`, `chat.folders` (no data, only to the owner: refetch folders).
+`chat.reaction {chat_id, message_id, reactions}`, `chat.attachment {chat_id, message_id, attachment}` (media
+finished processing), `chat.folders` (no data, only to the owner: refetch folders).
 Calls in chat: when a call reaches a final status, `MessageRouter` runs `RecordCallInChatAction`, which adds
 a `type = call` message (author = caller, empty body, `call_id`; the resource exposes `call {id, status,
 duration_seconds}`) to the participants' direct chat, creating it if needed. Calls with guests are not
