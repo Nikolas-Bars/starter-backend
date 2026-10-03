@@ -1,11 +1,22 @@
-# Starter API
+# Kolyansburg API
 
-Заготовка REST API на Laravel 12: регистрация, вход по Bearer-токену, моковые пользователи,
-модульная архитектура Controller → Action → Task → Repository и строгие проверки (PHPStan level 10 +
+Бэкенд семейного мессенджера Kolyansburg — https://call-yansburg.com. Клиенты: веб
+([starter-frontend](../starter-frontend)) и Android-приложение ([starter-mobile](../starter-mobile)).
+
+Что умеет:
+
+- регистрация, вход по Bearer-токену, профиль с ником `@username`, поиск людей;
+- чаты 1:1 с папками, реакциями, «прочитано» и «печатает…»;
+- фото, видео, голосовые и файлы в чатах: до 50 МБ на файл, сжатие на сервере, всего до 10 ГБ;
+- видеозвонки 1:1 (WebRTC) со своим сервером сигнализации, TURN и историей звонков;
+- личная ссылка для звонка и вход гостем;
+- push о входящих звонках на телефон (Firebase).
+
+Модульная архитектура Controller → Action → Task → Repository и строгие проверки (PHPStan level 10 +
 архитектурные правила).
 
 Стек: PHP 8.3, Laravel 12, RoadRunner, MariaDB 11.4, Redis 7, Laravel Sanctum, spatie/laravel-data,
-spatie/laravel-route-attributes, L5-Swagger.
+spatie/laravel-route-attributes, L5-Swagger, ffmpeg и Imagick (сжатие вложений).
 
 ## Быстрый старт (macOS)
 
@@ -48,12 +59,22 @@ make start
 { "status": "success|error", "message": "текст", "data": {}, "errors": { "field": ["..."] } }
 ```
 
-| Метод | Путь                 | Доступ    | Описание |
-|-------|----------------------|-----------|----------|
-| POST  | `/api/auth/register` | гость     | Регистрация, сразу возвращает токен (201) |
-| POST  | `/api/auth/login`    | гость     | Вход, возвращает токен |
-| GET   | `/api/auth/me`       | по токену | Текущий пользователь |
-| POST  | `/api/auth/logout`   | по токену | Отзывает токен текущего устройства |
+Полный список с параметрами и примерами — в Swagger (http://localhost:8090/api/documentation).
+Основные группы:
+
+| Пути | Что |
+|------|-----|
+| `auth/register`, `auth/login`, `auth/me`, `auth/logout` | Регистрация и вход, токен на устройство |
+| `profile`, `users?search=` | Свой профиль и ник, поиск по имени, email и `@нику` |
+| `chats`, `chats/direct`, `chats/{id}/messages`, `chats/{id}/read`, `…/reaction` | Чаты, сообщения, «прочитано», реакции |
+| `chat-folders` | Личные папки чатов |
+| `attachments`, `files/{path}` | Загрузка вложения и выдача файла по подписанной ссылке |
+| `calls`, `calls/ice-servers`, `calls/ws-ticket`, `calls/{id}/decline` | История звонков, STUN/TURN, билет для сокета, «Отклонить» из уведомления |
+| `call-link`, `call-links/{code}` | Своя ссылка для звонка, вход гостем по чужой |
+| `push/devices` | FCM-токен телефона |
+
+События в реальном времени (новые сообщения, «прочитано», реакции, готовые вложения, звонки)
+приходят по WebSocket — `ws://localhost:8091`, в проде `wss://call-yansburg.com/ws`.
 
 ```bash
 curl -X POST http://localhost:8090/api/auth/login \
@@ -64,6 +85,25 @@ curl http://localhost:8090/api/auth/me -H 'Authorization: Bearer <access_token>'
 ```
 
 Язык ответов: заголовок `X-Locale` или `Accept-Language` (`ru` по умолчанию, есть `en`).
+
+## Файлы в чатах
+
+1. Клиент загружает файл: `POST /api/attachments` (multipart: `file`, необязательные `name` — имя
+   у отправителя, `voice` — голосовое, `as_file` — отправить фото или видео без сжатия) и получает
+   вложение со `status`.
+2. Отправляет сообщение с ним: `POST /api/chats/{id}/messages {client_id, body?, attachment_ids}` —
+   до 10 вложений, текст необязателен.
+3. Фото, видео и голосовые сжимает очередь `media` (`ProcessChatAttachmentJob`): пока идёт сжатие,
+   у вложения `status: processing`, по готовности участникам чата приходит событие
+   `chat.attachment`. Битый файл получает `failed`, сообщение остаётся.
+
+Фото — до 2560 px и превью 480 px, без EXIF и координат (JPEG; PNG и GIF остаются в своём формате); видео — H.264 до 720p с кадром-превью;
+голосовые — AAC 64 кбит/с с волной громкости. Остальное хранится как есть. Не отправленные за сутки
+загрузки удаляются раз в час (`attachments:prune`). Сколько занято: `make artisan cmd='attachments:usage'`.
+
+Ссылки на файлы относительные (`/api/files/…?expires=…&signature=…`), подписаны ключом приложения и
+живут до конца следующих суток. Локально файл отдаёт PHP, в проде — Caddy после проверки подписи
+(`deploy/Caddyfile`). Хранение на сервере, лимиты и копия в R2 — [deploy/README.md](deploy/README.md).
 
 ## Безопасность
 
@@ -78,6 +118,8 @@ curl http://localhost:8090/api/auth/me -H 'Authorization: Bearer <access_token>'
 - Сервер звонков принимает не токен, а одноразовый билет на 30 секунд (`POST /api/calls/ws-ticket`):
   адрес сокета попадает в логи прокси, и токен там оседать не должен.
 - Логины TURN временные и у каждого пользователя свои, если задан `CALL_TURN_SECRET`.
+- Файлы чатов открываются только по подписанной ссылке, которую API выдаёт участникам чата; из фото
+  удаляются EXIF и координаты. Загрузка — 30 файлов в минуту на пользователя.
 
 ## Команды
 

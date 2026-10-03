@@ -6,6 +6,7 @@
 # Восстановление, в том числе на новом сервере, — deploy/restore.sh.
 #   ./backup.sh            — сделать бэкап сейчас
 #   ./backup.sh --install  — поставить age и rclone и делать бэкап каждый день в 03:30 по времени сервера (cron)
+#   ./backup.sh --check    — сверить копию файлов чатов в R2 с диском, ничего не меняя
 set -euo pipefail
 
 cd "$(dirname "$0")"
@@ -29,6 +30,15 @@ env_value() {
 
 # shellcheck source=r2.sh
 source ./r2.sh
+
+if [[ "${1:-}" == "--check" ]]; then
+    if ! r2_enabled; then
+        echo "Ключей R2 в deploy/.env нет (deploy/README.md, «Файлы чатов»)" >&2
+        exit 1
+    fi
+    r2_configure
+    exec rclone cryptcheck "$(attachments_dir)" "$R2_CURRENT"
+fi
 
 recipient=$(env_value BACKUP_AGE_RECIPIENT)
 if [[ -z "$recipient" ]]; then
