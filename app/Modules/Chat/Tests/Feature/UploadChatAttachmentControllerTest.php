@@ -93,6 +93,22 @@ final class UploadChatAttachmentControllerTest extends TestCase
             ->assertJsonPath('data.name', 'passwd.txt');
     }
 
+    public function testNameFromFieldReplacesTemporaryFileName(): void
+    {
+        $this->actingAsUser();
+
+        $this->post('/api/attachments', [
+            'file' => $this->file('3f6c1a9e-58d2-4c55-9d0b-2a1f7e4b8c10.pdf', '%PDF-1.4'),
+            'name' => '../Отчёт за сентябрь.pdf',
+        ])
+            ->assertCreated()
+            ->assertJsonPath('data.name', 'Отчёт за сентябрь.pdf');
+
+        $this->post('/api/attachments', ['file' => $this->file('notes.txt', 'x'), 'name' => '  '])
+            ->assertCreated()
+            ->assertJsonPath('data.name', 'notes.txt');
+    }
+
     public function testValidatesFileAndSize(): void
     {
         $this->actingAsUser();
