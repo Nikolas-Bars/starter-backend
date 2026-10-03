@@ -19,7 +19,7 @@ use Spatie\RouteAttributes\Attributes\WhereNumber;
  * @OA\Post(
  *     path="/api/chats/{chatId}/messages",
  *     summary="Отправить сообщение",
- *     description="Сохраняет сообщение; участники чата, что в сети, получают его по WebSocket событием chat.message. Повтор с тем же client_id возвращает уже сохранённое сообщение. Не больше 60 сообщений в минуту.",
+ *     description="Сохраняет сообщение; участники чата, что в сети, получают его по WebSocket событием chat.message. Повтор с тем же client_id возвращает уже сохранённое сообщение. Файлы сначала загружаются через POST /api/attachments, сюда передаются их id; чужой, уже отправленный или испорченный файл — 404 Chat.ChatAttachmentNotFoundException. Не больше 60 сообщений в минуту.",
  *     tags={"Чаты"},
  *     security={{"sanctum": {}}},
  *     @OA\Parameter(name="chatId", in="path", required=true, @OA\Schema(type="integer", example=7)),

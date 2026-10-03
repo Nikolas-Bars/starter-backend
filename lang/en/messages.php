@@ -33,6 +33,8 @@ return [
         'read'             => 'Messages marked as read.',
         'reacted'          => 'Reaction saved.',
         'reaction_removed' => 'Reaction removed.',
+        'file_uploaded'    => 'File uploaded.',
+        'file_allowed'     => 'File access granted.',
     ],
     'chat_folder' => [
         'list'    => 'Chat folders.',

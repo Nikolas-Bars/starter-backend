@@ -25,8 +25,15 @@ return [
         'user_id' => 'recipient',
     ],
     'chat_message' => [
-        'body'      => 'message text',
-        'client_id' => 'message id',
+        'body'             => 'message text',
+        'client_id'        => 'message id',
+        'attachment_ids'   => 'files',
+        'attachment_ids.*' => 'file',
+    ],
+    'chat_attachment' => [
+        'file'    => 'file',
+        'voice'   => 'voice message',
+        'as_file' => 'uncompressed',
     ],
     'chat_read' => [
         'message_id' => 'message',

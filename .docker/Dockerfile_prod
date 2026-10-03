@@ -7,12 +7,14 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     unzip \
     libicu-dev \
     libzip-dev \
+    ffmpeg \
+    libmagickwand-dev \
     && apt-get autoremove -y \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
-RUN pecl install redis \
-    && docker-php-ext-enable redis \
+RUN pecl install redis imagick \
+    && docker-php-ext-enable redis imagick \
     && docker-php-ext-install -j"$(nproc)" \
         bcmath \
         intl \
@@ -33,7 +35,8 @@ WORKDIR /var/www/html
 
 ENV COMPOSER_HOME=/tmp/composer
 
-RUN mkdir -p /tmp/composer && chown -R www-data:www-data /var/www/html /tmp/composer
+# /var/www/attachments — точка монтирования тома с файлами чатов: новый том получит владельца www-data
+RUN mkdir -p /tmp/composer /var/www/attachments && chown -R www-data:www-data /var/www/html /tmp/composer /var/www/attachments
 
 USER www-data
 

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Modules\Chat\Http\Resources;
 
+use App\Modules\Chat\Models\ChatAttachment;
 use App\Modules\Chat\Models\ChatMessage;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
@@ -42,6 +43,12 @@ use Illuminate\Http\Resources\Json\JsonResource;
  *         description="В порядке, в каком реакции впервые появились",
  *         @OA\Items(ref="#/components/schemas/ChatMessageReaction")
  *     ),
+ *     @OA\Property(
+ *         property="attachments",
+ *         type="array",
+ *         description="Файлы сообщения; тогда body — необязательная подпись",
+ *         @OA\Items(ref="#/components/schemas/ChatAttachmentResource")
+ *     ),
  *     @OA\Property(property="created_at", type="string", format="date-time", nullable=true)
  * )
  *
@@ -66,7 +73,10 @@ final class ChatMessageResource extends JsonResource
                 'status'           => $this->call->status->value,
                 'duration_seconds' => $this->call->durationSeconds(),
             ],
-            'reactions'  => $this->groupedReactions(),
+            'reactions'   => $this->groupedReactions(),
+            'attachments' => $this->attachments->map(
+                static fn(ChatAttachment $attachment): array => ChatAttachmentResource::make($attachment)->resolve(),
+            )->values()->all(),
             'created_at' => $this->created_at?->toIso8601String(),
         ];
     }

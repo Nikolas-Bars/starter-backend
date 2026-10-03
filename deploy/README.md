@@ -92,7 +92,8 @@ ssh starter 'chmod 600 /opt/starter/starter-backend/deploy/secrets/firebase-cred
 
 - `BACKUP_AGE_RECIPIENT` — открытый ключ `age1…`. Им можно только зашифровать, поэтому даже со
   взломанного сервера старые бэкапы не прочитать.
-- `BACKUP_TELEGRAM_BOT_TOKEN`, `BACKUP_TELEGRAM_CHAT_ID` — бот и чат, куда приходят копии.
+- `ADMIN_TELEGRAM_BOT_TOKEN`, `ADMIN_TELEGRAM_CHAT_ID` — бот и чат, куда приходят копии (и
+  предупреждение, что место для файлов чатов кончается).
 
 Секретный ключ лежит на Маке в `~/.config/starter/backup-age-key.txt`, копия — в менеджере паролей.
 На сервере его нет и быть не должно. Потерять его — потерять все бэкапы.
@@ -106,6 +107,34 @@ age -d -i ~/.config/starter/backup-age-key.txt ~/Downloads/starter-2026-10-03-03
 
 Посмотреть, что внутри архива: `age -d -i ~/.config/starter/backup-age-key.txt файл.tar.gz.age | tar -tzv`.
 Сделать бэкап вручную: `ssh starter /opt/starter/starter-backend/deploy/backup.sh`.
+
+## Файлы чатов
+
+Фото, видео, голосовые и файлы из чатов лежат в томе `starter_attachments` (на хосте —
+`docker volume inspect -f '{{ .Mountpoint }}' starter_attachments`). Всего — не больше 10 ГБ
+(`ATTACHMENTS_QUOTA_BYTES`): при 90% в Telegram приходит предупреждение, при 100% новые файлы
+не принимаются. Фото и видео сжимает очередь `media` (процесс `media` в supervisor); отдаёт файлы
+Caddy по подписанным ссылкам `/api/files/…`, подпись проверяет PHP.
+
+```bash
+docker compose exec php php artisan attachments:usage                     # сколько занято
+docker compose exec php php artisan attachments:prune --before=2026-01-01 # удалить файлы старше даты
+```
+
+Сообщения при этом остаются, пропадают только вложения. Не отправленные за сутки файлы удаляются
+сами (раз в час).
+
+Копия — в Cloudflare R2, бакет `call-yansburg-files`: тот же `backup.sh` каждую ночь синхронизирует
+том с бакетом через rclone. Файлы шифруются на сервере (`rclone crypt`), удалённые с сервера ещё
+30 дней лежат в корзине бакета. `restore.sh` на новом сервере скачивает их обратно.
+
+Настройки в `deploy/.env`:
+
+- `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_BUCKET` — ключ R2 (Cloudflare →
+  R2 → Manage API tokens, права Object Read & Write только на этот бакет).
+- `ATTACHMENTS_CRYPT_PASSWORD`, `ATTACHMENTS_CRYPT_SALT` — пароль шифрования. Сам `.env` лежит в
+  зашифрованном бэкапе, поэтому пароль восстановится вместе с ним; копия — в
+  `~/.config/starter/attachments-crypt.env` на Маке.
 
 ## База из DBeaver
 

@@ -6,11 +6,13 @@ namespace App\Modules\Chat\Actions;
 
 use App\Actions\BaseAction;
 use App\Modules\Chat\DTO\SendChatMessageDTO;
+use App\Modules\Chat\Exceptions\ChatAttachmentNotFoundException;
 use App\Modules\Chat\Exceptions\ChatNotFoundException;
 use App\Modules\Chat\Http\Resources\ChatMessageResource;
 use App\Modules\Chat\Models\ChatMember;
 use App\Modules\Chat\Models\ChatMessage;
 use App\Modules\Chat\Tasks\AppendChatMessageTask;
+use App\Modules\Chat\Tasks\AttachChatAttachmentsTask;
 use App\Modules\Chat\Tasks\FindChatMemberTask;
 use App\Modules\Chat\Tasks\FindChatMessageByClientIdTask;
 use App\Modules\Chat\Tasks\FindChatTask;
@@ -30,6 +32,7 @@ final class SendChatMessageAction extends BaseAction
         private readonly FindChatTask                  $findChatTask,
         private readonly FindChatMessageByClientIdTask $findChatMessageByClientIdTask,
         private readonly AppendChatMessageTask         $appendChatMessageTask,
+        private readonly AttachChatAttachmentsTask     $attachChatAttachmentsTask,
         private readonly UpdateLastReadMessageTask     $updateLastReadMessageTask,
         private readonly ListChatMemberIdsTask         $listChatMemberIdsTask,
         private readonly PublishChatEventTask          $publishChatEventTask,
@@ -39,8 +42,10 @@ final class SendChatMessageAction extends BaseAction
     /**
      * Сохраняет сообщение и рассылает его участникам чата (событие chat.message).
      * Повтор с тем же client_id возвращает уже сохранённое сообщение и ничего не рассылает.
+     * Файлы, которые ещё обрабатываются, придут потом событием chat.attachment.
      *
      * @throws ChatNotFoundException
+     * @throws ChatAttachmentNotFoundException
      */
     public function run(User $user, int $chatId, SendChatMessageDTO $dto): ChatMessage
     {
@@ -60,6 +65,11 @@ final class SendChatMessageAction extends BaseAction
         try {
             $message = DB::transaction(function () use ($chat, $member, $user, $dto): ChatMessage {
                 $message = $this->appendChatMessageTask->run($chat, $user->id, $dto->client_id, $dto->body);
+
+                if ($dto->attachment_ids !== []) {
+                    $message->setRelation('attachments', $this->attachChatAttachmentsTask->run($message, $user->id, $dto->attachment_ids));
+                }
+
                 // Своё сообщение автор уже прочитал
                 $this->updateLastReadMessageTask->run($member, $message->id);
 

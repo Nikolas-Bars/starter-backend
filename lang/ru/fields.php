@@ -26,8 +26,15 @@ return [
         'user_id' => 'собеседник',
     ],
     'chat_message' => [
-        'body'      => 'текст сообщения',
-        'client_id' => 'идентификатор сообщения',
+        'body'             => 'текст сообщения',
+        'client_id'        => 'идентификатор сообщения',
+        'attachment_ids'   => 'файлы',
+        'attachment_ids.*' => 'файл',
+    ],
+    'chat_attachment' => [
+        'file'    => 'файл',
+        'voice'   => 'голосовое',
+        'as_file' => 'без сжатия',
     ],
     'chat_read' => [
         'message_id' => 'сообщение',

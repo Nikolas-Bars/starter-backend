@@ -4,7 +4,9 @@ declare(strict_types=1);
 
 namespace App\Modules\Chat\Tests\Feature;
 
+use App\Modules\Chat\Enums\ChatAttachmentStatusEnum;
 use App\Modules\Chat\Models\Chat;
+use App\Modules\Chat\Models\ChatAttachment;
 use App\Modules\Chat\Models\ChatMember;
 use App\Modules\Chat\Models\ChatMessage;
 use App\Modules\User\Models\User;
@@ -87,6 +89,70 @@ final class SendChatMessageControllerTest extends TestCase
 
         self::assertSame(0, ChatMessage::query()->count());
         self::assertSame([], $this->app->make(RealtimeBus::class)->drain(10));
+    }
+
+    public function testSendsFilesWithoutText(): void
+    {
+        $me     = $this->actingAsUser();
+        $chat   = Chat::factory()->between($me, User::factory()->create())->create();
+        $photo  = ChatAttachment::factory()->image()->processing()->create(['user_id' => $me->id]);
+        $report = ChatAttachment::factory()->create(['user_id' => $me->id, 'original_name' => 'отчёт.pdf']);
+
+        $response = $this->postJson('/api/chats/' . $chat->id . '/messages', [
+            'client_id'      => Str::uuid()->toString(),
+            'attachment_ids' => [$report->id, $photo->id],
+        ])
+            ->assertCreated()
+            ->assertJsonPath('data.body', '')
+            ->assertJsonCount(2, 'data.attachments')
+            ->assertJsonPath('data.attachments.0.id', $photo->id)
+            ->assertJsonPath('data.attachments.0.status', 'processing')
+            ->assertJsonPath('data.attachments.0.url', null)
+            ->assertJsonPath('data.attachments.1.name', 'отчёт.pdf');
+
+        self::assertIsString($response->json('data.attachments.1.url'));
+        self::assertStringStartsWith('/api/files/', $response->json('data.attachments.1.url'));
+        self::assertSame($response->json('data.id'), $photo->refresh()->message_id);
+        self::assertSame($response->json('data.id'), $report->refresh()->message_id);
+
+        $events = $this->app->make(RealtimeBus::class)->drain(10);
+        self::assertSame($response->json('data'), $events[0]['message']['data']['message']);
+
+        // В истории и списке чатов вложения тоже видны
+        $this->getJson('/api/chats/' . $chat->id . '/messages')->assertJsonCount(2, 'data.items.0.attachments');
+    }
+
+    public function testRejectsForeignSentOrFailedFiles(): void
+    {
+        $me    = $this->actingAsUser();
+        $chat  = Chat::factory()->between($me, User::factory()->create())->create();
+        $url   = '/api/chats/' . $chat->id . '/messages';
+        $mine  = ChatAttachment::factory()->create(['user_id' => $me->id]);
+        $cases = [
+            ChatAttachment::factory()->create(),
+            ChatAttachment::factory()->create(['user_id' => $me->id, 'status' => ChatAttachmentStatusEnum::Failed]),
+            ChatAttachment::factory()->create([
+                'user_id'    => $me->id,
+                'message_id' => ChatMessage::factory()->inChat($chat, $me)->create()->id,
+            ]),
+        ];
+
+        foreach ($cases as $attachment) {
+            $this->postJson($url, ['client_id' => Str::uuid()->toString(), 'body' => 'Смотри', 'attachment_ids' => [$mine->id, $attachment->id]])
+                ->assertNotFound()
+                ->assertJsonPath('message', 'Файл не найден или уже отправлен.');
+        }
+
+        self::assertSame(1, ChatMessage::query()->count());
+        self::assertNull($mine->refresh()->message_id);
+
+        $this->postJson($url, ['client_id' => Str::uuid()->toString(), 'attachment_ids' => []])
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors('body');
+
+        $this->postJson($url, ['client_id' => Str::uuid()->toString(), 'attachment_ids' => \range(1, 11)])
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors('attachment_ids');
     }
 
     private function member(Chat $chat, User $user): ChatMember
