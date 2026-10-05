@@ -53,6 +53,9 @@ Reactions: `PUT|DELETE chats/{id}/messages/{messageId}/reaction {emoji}` — one
 replaces it), emoji from `ChatReactionEnum` (mirrored in the frontend); messages carry `reactions:
 [{emoji, user_ids}]`. `DELETE chats/{id}/messages/{messageId}` deletes for everyone — only the author, never
 a call message — with its attachment files; the chat's last message falls back to the previous one.
+`PATCH chats/{id}/messages/{messageId} {body}` edits the author's own text message (not a forward, not a call)
+until it is answered — any later message or call from another member makes it 409; sets `edited_at` and
+sends `chat.message_updated {chat_id, message}` (the same text changes nothing and sends no event).
 `POST chats/{id}/messages/forward {message_id, client_id}` copies a message the user can see (text and ready
 attachments as new files) into chat `{id}`; it carries `forwarded_from {user_id, name}` of the original author
 (forwarding a forward keeps it) and goes out as a normal `chat.message`. Folders are private to their owner: `GET|POST chat-folders`, `PATCH|DELETE

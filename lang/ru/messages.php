@@ -35,6 +35,7 @@ return [
         'reaction_removed' => 'Реакция убрана.',
         'message_deleted'  => 'Сообщение удалено.',
         'forwarded'        => 'Сообщение переслано.',
+        'edited'           => 'Сообщение изменено.',
         'file_uploaded'    => 'Файл загружен.',
         'file_allowed'     => 'Доступ к файлу разрешён.',
     ],

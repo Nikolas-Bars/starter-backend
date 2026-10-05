@@ -85,6 +85,26 @@ final class ChatMessageRepository extends BaseRepository
         $message->delete();
     }
 
+    public function updateBody(ChatMessage $message, string $body): void
+    {
+        $message->forceFill(['body' => $body, 'edited_at' => $message->freshTimestamp()])->save();
+    }
+
+    public function loadForResource(ChatMessage $message): ChatMessage
+    {
+        return $message->load(['reactions', 'call', 'attachments']);
+    }
+
+    /**
+     * Писал ли в чате кто-то, кроме $userId, после сообщения $messageId
+     */
+    public function hasOthersAfter(int $chatId, int $messageId, int $userId): bool
+    {
+        $query = $this->query()->where('chat_id', $chatId)->getQuery();
+
+        return $query->where('id', '>', $messageId)->where('user_id', '!=', $userId)->exists();
+    }
+
     public function latestInChat(int $chatId): ?ChatMessage
     {
         $query = $this->query()->where('chat_id', $chatId)->with(['reactions', 'call', 'attachments']);

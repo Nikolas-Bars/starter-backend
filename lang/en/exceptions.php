@@ -33,6 +33,8 @@ return [
         'message_not_found'    => 'Message not found.',
         'message_forbidden'    => 'You can delete only your own messages.',
         'not_forwardable'      => 'This message cannot be forwarded.',
+        'not_editable'         => 'You can edit only your own messages.',
+        'answered'             => 'This message already has a reply and can no longer be edited.',
         'folder_not_found'     => 'Folder not found.',
         'folder_limit'         => 'You can have at most 20 folders.',
         'attachment_not_found' => 'File not found or already sent.',
