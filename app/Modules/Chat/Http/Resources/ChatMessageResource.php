@@ -57,6 +57,7 @@ use Illuminate\Http\Resources\Json\JsonResource;
  *         description="Файлы сообщения; тогда body — необязательная подпись",
  *         @OA\Items(ref="#/components/schemas/ChatAttachmentResource")
  *     ),
+ *     @OA\Property(property="edited_at", type="string", format="date-time", nullable=true, description="Автор менял текст; null — не менял"),
  *     @OA\Property(property="created_at", type="string", format="date-time", nullable=true)
  * )
  *
@@ -89,6 +90,7 @@ final class ChatMessageResource extends JsonResource
             'attachments' => $this->attachments->map(
                 static fn(ChatAttachment $attachment): array => ChatAttachmentResource::make($attachment)->resolve(),
             )->values()->all(),
+            'edited_at'  => $this->edited_at?->toIso8601String(),
             'created_at' => $this->created_at?->toIso8601String(),
         ];
     }

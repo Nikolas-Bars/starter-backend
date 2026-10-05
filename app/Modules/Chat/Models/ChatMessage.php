@@ -24,6 +24,7 @@ use Illuminate\Support\Carbon;
  * @property      string                               $body                   У служебных сообщений пустой; у сообщения с файлами — подпись или пусто
  * @property      int|null                             $forwarded_from_user_id Пересланное: автор оригинала
  * @property      string|null                          $forwarded_from_name    Пересланное: имя автора оригинала на момент пересылки
+ * @property      Carbon|null                          $edited_at              Когда автор последний раз менял текст
  * @property-read Carbon|null                          $created_at
  * @property-read Carbon|null                          $updated_at
  * @property-read Collection<int, ChatMessageReaction> $reactions
@@ -92,7 +93,8 @@ final class ChatMessage extends Model
     protected function casts(): array
     {
         return [
-            'type' => ChatMessageTypeEnum::class,
+            'type'      => ChatMessageTypeEnum::class,
+            'edited_at' => 'datetime',
         ];
     }
 }

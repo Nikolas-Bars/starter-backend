@@ -35,6 +35,7 @@ return [
         'reaction_removed' => 'Reaction removed.',
         'message_deleted'  => 'Message deleted.',
         'forwarded'        => 'Message forwarded.',
+        'edited'           => 'Message edited.',
         'file_uploaded'    => 'File uploaded.',
         'file_allowed'     => 'File access granted.',
     ],
