@@ -31,17 +31,20 @@ final class ChatMessageRepository extends BaseRepository
     }
 
     /**
-     * @param Call|null $call Звонок для служебного сообщения; null — обычный текст
+     * @param Call|null                                   $call          Звонок для служебного сообщения; null — обычный текст
+     * @param array{user_id: int|null, name: string}|null $forwardedFrom Автор оригинала, если сообщение пересланное
      */
-    public function store(int $chatId, int $userId, string $clientId, string $body, ?Call $call = null): ChatMessage
+    public function store(int $chatId, int $userId, string $clientId, string $body, ?Call $call = null, ?array $forwardedFrom = null): ChatMessage
     {
         $message = $this->create([
-            'chat_id'   => $chatId,
-            'user_id'   => $userId,
-            'client_id' => $clientId,
-            'type'      => $call === null ? ChatMessageTypeEnum::Text : ChatMessageTypeEnum::Call,
-            'call_id'   => $call?->id,
-            'body'      => $body,
+            'chat_id'                => $chatId,
+            'user_id'                => $userId,
+            'client_id'              => $clientId,
+            'type'                   => $call === null ? ChatMessageTypeEnum::Text : ChatMessageTypeEnum::Call,
+            'call_id'                => $call?->id,
+            'body'                   => $body,
+            'forwarded_from_user_id' => $forwardedFrom['user_id'] ?? null,
+            'forwarded_from_name'    => $forwardedFrom['name'] ?? null,
         ]);
 
         // У нового сообщения реакций и вложений нет: не делаем за этим лишний запрос
@@ -72,6 +75,27 @@ final class ChatMessageRepository extends BaseRepository
         $query->getQuery()->orderByDesc('id')->limit($limit);
 
         return $query->get();
+    }
+
+    /**
+     * Реакции и записи о вложениях удаляет каскад внешних ключей
+     */
+    public function delete(ChatMessage $message): void
+    {
+        $message->delete();
+    }
+
+    public function latestInChat(int $chatId): ?ChatMessage
+    {
+        $query = $this->query()->where('chat_id', $chatId)->with(['reactions', 'call', 'attachments']);
+        $query->getQuery()->orderByDesc('id');
+
+        return $query->first();
+    }
+
+    public function findWithAttachments(int $messageId): ?ChatMessage
+    {
+        return $this->query()->with('attachments')->whereKey($messageId)->first();
     }
 
     public function findInChat(int $chatId, int $messageId): ?ChatMessage

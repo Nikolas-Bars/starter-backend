@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Modules\User\Http\Resources;
 
 use App\Modules\User\Models\User;
+use App\Services\FileUrlSigner;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
@@ -16,6 +17,7 @@ use Illuminate\Http\Resources\Json\JsonResource;
  *     @OA\Property(property="id", type="integer", example=1),
  *     @OA\Property(property="name", type="string", example="Иван Петров"),
  *     @OA\Property(property="username", type="string", nullable=true, example="ivan_petrov", description="Ник без @"),
+ *     @OA\Property(property="avatar_url", type="string", nullable=true, example="/api/files/avatars/2026/10/abc.jpg?expires=1767312000&signature=…", description="Подписанная ссылка на аватарку 512×512, null — аватарки нет"),
  *     @OA\Property(property="email", type="string", format="email", nullable=true, example="ivan@example.com", description="Только у текущего пользователя, у остальных null"),
  *     @OA\Property(property="email_verified_at", type="string", format="date-time", nullable=true),
  *     @OA\Property(property="created_at", type="string", format="date-time", nullable=true),
@@ -47,6 +49,7 @@ final class UserResource extends JsonResource
             'id'                => $this->id,
             'name'              => $this->name,
             'username'          => $this->username,
+            'avatar_url'        => $this->avatar_path === null ? null : resolve(FileUrlSigner::class)->url($this->avatar_path),
             'email'             => $this->withEmail ? $this->email : null,
             'email_verified_at' => $this->email_verified_at?->toIso8601String(),
             'created_at'        => $this->created_at?->toIso8601String(),

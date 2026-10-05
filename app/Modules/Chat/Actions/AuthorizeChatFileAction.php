@@ -11,6 +11,7 @@ use App\Modules\Chat\Enums\ChatAttachmentKindEnum;
 use App\Modules\Chat\Enums\ChatAttachmentStatusEnum;
 use App\Modules\Chat\Exceptions\ChatFileForbiddenException;
 use App\Modules\Chat\Tasks\FindChatAttachmentByPathTask;
+use App\Modules\User\Tasks\FindUserByAvatarPathTask;
 use App\Services\FileUrlSigner;
 use Illuminate\Support\Str;
 use Symfony\Component\HttpFoundation\HeaderUtils;
@@ -20,12 +21,14 @@ final class AuthorizeChatFileAction extends BaseAction
     public function __construct(
         private readonly FileUrlSigner                $fileUrlSigner,
         private readonly FindChatAttachmentByPathTask $findChatAttachmentByPathTask,
+        private readonly FindUserByAvatarPathTask     $findUserByAvatarPathTask,
     ) {
     }
 
     /**
      * Проверяет подписанную ссылку и говорит, с какими заголовками отдать файл.
      * Ссылку получают только участники чата (в истории сообщений) — сама подпись и есть доступ.
+     * Так же отдаются аватарки: ссылку на них видят все, кому виден пользователь.
      *
      * @throws ChatFileForbiddenException
      */
@@ -33,6 +36,14 @@ final class AuthorizeChatFileAction extends BaseAction
     {
         if (!$this->fileUrlSigner->verify($dto->path, $dto->expires, $dto->signature)) {
             throw new ChatFileForbiddenException();
+        }
+
+        if ($this->findUserByAvatarPathTask->run($dto->path) !== null) {
+            return new ChatFileAccessDTO(
+                path: $dto->path,
+                content_type: 'image/jpeg',
+                content_disposition: HeaderUtils::makeDisposition(HeaderUtils::DISPOSITION_INLINE, 'avatar.jpg'),
+            );
         }
 
         $attachment = $this->findChatAttachmentByPathTask->run($dto->path);

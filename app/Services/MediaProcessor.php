@@ -27,6 +27,7 @@ final readonly class MediaProcessor
      * @param array{max_side: int, thumb_side: int, quality: int, thumb_quality: int} $image
      * @param array{max_side: int, crf: int, audio_kbps: int, threads: int}           $video
      * @param array{audio_kbps: int, waveform_peaks: int}                             $voice
+     * @param array{side: int, quality: int}                                          $avatar
      */
     public function __construct(
         private string $ffmpeg,
@@ -35,6 +36,7 @@ final readonly class MediaProcessor
         private array $image,
         private array $video,
         private array $voice,
+        private array $avatar,
     ) {
     }
 
@@ -86,6 +88,35 @@ final readonly class MediaProcessor
         $image->clear();
 
         return ['mime' => $mime, 'width' => $size[0], 'height' => $size[1]];
+    }
+
+    /**
+     * Аватарка: квадрат по центру, JPEG без метаданных
+     */
+    public function avatar(string $source, string $target): void
+    {
+        Imagick::setResourceLimit(Imagick::RESOURCETYPE_MEMORY, self::IMAGICK_MEMORY_BYTES);
+
+        $ping = new Imagick();
+        $ping->pingImage($source);
+
+        if ($ping->getImageWidth() * $ping->getImageHeight() > self::MAX_IMAGE_PIXELS) {
+            throw new RuntimeException('Слишком большое фото');
+        }
+
+        $ping->clear();
+
+        $image = new Imagick($source . '[0]');
+        $this->autoOrient($image);
+
+        if ($image->getImageColorspace() === Imagick::COLORSPACE_CMYK) {
+            $image->transformImageColorspace(Imagick::COLORSPACE_SRGB);
+        }
+
+        $image->cropThumbnailImage($this->avatar['side'], $this->avatar['side']);
+        $image->setImagePage(0, 0, 0, 0);
+        $this->write($image, 'image/jpeg', $target, $this->avatar['quality']);
+        $image->clear();
     }
 
     /**

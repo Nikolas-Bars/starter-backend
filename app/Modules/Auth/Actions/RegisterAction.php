@@ -28,6 +28,7 @@ final class RegisterAction extends BaseAction
         return DB::transaction(function () use ($dto, $deviceName): AuthTokenDTO {
             $user = $this->createUserTask->run(new UserStoreDTO(
                 name: $dto->name,
+                username: $dto->username,
                 email: $dto->email,
                 password: $dto->password,
             ));

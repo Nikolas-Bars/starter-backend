@@ -13,6 +13,7 @@ final class UserStoreDTO extends Data
      */
     public function __construct(
         public string $name,
+        public string $username,
         public string $email,
         public string $password,
     ) {

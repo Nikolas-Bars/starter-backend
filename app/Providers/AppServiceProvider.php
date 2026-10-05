@@ -35,6 +35,8 @@ final class AppServiceProvider extends ServiceProvider
             $video = Config::array('attachments.video');
             /** @var array{audio_kbps: int, waveform_peaks: int} $voice */
             $voice = Config::array('attachments.voice');
+            /** @var array{side: int, quality: int} $avatar */
+            $avatar = Config::array('attachments.avatar');
 
             return new MediaProcessor(
                 Config::string('attachments.ffmpeg'),
@@ -43,6 +45,7 @@ final class AppServiceProvider extends ServiceProvider
                 $image,
                 $video,
                 $voice,
+                $avatar,
             );
         });
         $this->registerModuleServiceProviders();

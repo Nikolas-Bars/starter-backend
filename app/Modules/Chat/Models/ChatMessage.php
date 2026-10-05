@@ -17,11 +17,13 @@ use Illuminate\Support\Carbon;
 /**
  * @property      int                                  $id
  * @property      int                                  $chat_id
- * @property      int                                  $user_id     Автор
- * @property      string                               $client_id   UUID, выбранный клиентом: повторная отправка не создаёт дубль
+ * @property      int                                  $user_id                Автор
+ * @property      string                               $client_id              UUID, выбранный клиентом: повторная отправка не создаёт дубль
  * @property      ChatMessageTypeEnum                  $type
- * @property      int|null                             $call_id     Для type = call
- * @property      string                               $body        У служебных сообщений пустой; у сообщения с файлами — подпись или пусто
+ * @property      int|null                             $call_id                Для type = call
+ * @property      string                               $body                   У служебных сообщений пустой; у сообщения с файлами — подпись или пусто
+ * @property      int|null                             $forwarded_from_user_id Пересланное: автор оригинала
+ * @property      string|null                          $forwarded_from_name    Пересланное: имя автора оригинала на момент пересылки
  * @property-read Carbon|null                          $created_at
  * @property-read Carbon|null                          $updated_at
  * @property-read Collection<int, ChatMessageReaction> $reactions
@@ -43,6 +45,8 @@ final class ChatMessage extends Model
         'type',
         'call_id',
         'body',
+        'forwarded_from_user_id',
+        'forwarded_from_name',
     ];
 
     /**

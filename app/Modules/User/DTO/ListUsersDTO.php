@@ -9,7 +9,7 @@ use Spatie\LaravelData\Data;
 final class ListUsersDTO extends Data
 {
     /**
-     * @param string|null $search Часть имени или email; null — без фильтра
+     * @param string|null $search Часть ника без «@»; null — без фильтра
      */
     public function __construct(
         public ?string $search = null,

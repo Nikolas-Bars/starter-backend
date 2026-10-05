@@ -38,8 +38,11 @@ CallLink (personal permanent "call me" link: `GET call-link`, `POST call-link/ro
 `guest_of_id` = link owner and a short-lived token (`calls.links.guest_token_ttl`). Guests are never deleted
 (calls cascade on user delete). `User::canContact()` is the single rule: a guest and their host can call and
 see each other online, nobody else. Endpoints guests must not use get the `not_guest` middleware.
-User also owns the profile: `PATCH profile` (name + optional unique `username`, lowercase `[a-z0-9_]{3,32}`);
-`GET users?search=` matches name, email or username (a leading `@` is ignored).
+User also owns the profile: `PATCH profile` (name + optional unique `username`, lowercase `[a-z0-9_]{3,32}`;
+registration requires it, same rule); `POST|DELETE profile/avatar` (multipart `avatar`: `MediaProcessor::avatar`
+crops to a 512 px JPEG on the `attachments` disk under `avatars/`; users carry a signed `avatar_url` or null,
+served like attachments — `AuthorizeChatFileAction` lets any signed-in user see an avatar);
+`GET users?search=` matches only a substring of the username (`INSTR`, so `_` is literal; a leading `@` is ignored) — never name or email.
 Chat (messenger, 1-on-1 for now; the schema is ready for groups: `chats` + `chat_members` + `chat_messages`).
 Writes go through REST: `GET chats`, `GET chats/{id}`, `POST chats/direct {user_id}` (find or create),
 `GET chats/{id}/messages?before_id=` (50 per page, oldest first, `has_more`), `POST chats/{id}/messages
@@ -48,7 +51,11 @@ Read state is a per-member cursor `chat_members.last_read_message_id` (only move
 "read" ticks are derived from it. Guests do not use chats (`not_guest`) and cannot be chat peers.
 Reactions: `PUT|DELETE chats/{id}/messages/{messageId}/reaction {emoji}` — one per user per message (a new one
 replaces it), emoji from `ChatReactionEnum` (mirrored in the frontend); messages carry `reactions:
-[{emoji, user_ids}]`. Folders are private to their owner: `GET|POST chat-folders`, `PATCH|DELETE
+[{emoji, user_ids}]`. `DELETE chats/{id}/messages/{messageId}` deletes for everyone — only the author, never
+a call message — with its attachment files; the chat's last message falls back to the previous one.
+`POST chats/{id}/messages/forward {message_id, client_id}` copies a message the user can see (text and ready
+attachments as new files) into chat `{id}`; it carries `forwarded_from {user_id, name}` of the original author
+(forwarding a forward keeps it) and goes out as a normal `chat.message`. Folders are private to their owner: `GET|POST chat-folders`, `PATCH|DELETE
 chat-folders/{id}`, `PUT|DELETE chat-folders/{id}/chats/{chatId}`, max 20; `GET chats?folder_id=` filters
 the list; a folder carries `chat_ids` and `unread_chats_count`.
 Attachments (`config/attachments.php`): `POST attachments` (multipart `file`, optional `name` — phones send
@@ -74,7 +81,8 @@ tests) after the transaction commits. The WebSocket server drains the bus every 
 most 0.1 s) and `MessageRouter::flushRealtime()` sends each event to every tab of its `user_ids`.
 Chat events: `chat.message {message}`, `chat.read {chat_id, user_id, last_read_message_id, unread_count}`,
 `chat.reaction {chat_id, message_id, reactions}`, `chat.attachment {chat_id, message_id, attachment}` (media
-finished processing), `chat.folders` (no data, only to the owner: refetch folders).
+finished processing), `chat.message_deleted {chat_id, message_id, user_id, last_changed, last_message}`
+(`last_message` is the new chat preview when `last_changed`), `chat.folders` (no data, only to the owner: refetch folders).
 Calls in chat: when a call reaches a final status, `MessageRouter` runs `RecordCallInChatAction`, which adds
 a `type = call` message (author = caller, empty body, `call_id`; the resource exposes `call {id, status,
 duration_seconds}`) to the participants' direct chat, creating it if needed. Calls with guests are not

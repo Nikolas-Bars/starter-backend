@@ -6,6 +6,7 @@ declare(strict_types=1);
 return [
     'register' => [
         'name'        => 'имя',
+        'username'    => 'ник',
         'email'       => 'email',
         'password'    => 'пароль',
         'device_name' => 'название устройства',
@@ -21,6 +22,7 @@ return [
     'profile' => [
         'name'     => 'имя',
         'username' => 'ник',
+        'avatar'   => 'аватарка',
     ],
     'chat_open' => [
         'user_id' => 'собеседник',
@@ -46,6 +48,10 @@ return [
     'chat_list' => [
         'folder_id' => 'папка',
         'page'      => 'страница',
+    ],
+    'chat_forward' => [
+        'message_id' => 'сообщение',
+        'client_id'  => 'идентификатор сообщения',
     ],
     'chat_reaction' => [
         'emoji' => 'реакция',

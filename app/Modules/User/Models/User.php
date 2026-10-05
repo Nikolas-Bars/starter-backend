@@ -15,6 +15,7 @@ use Laravel\Sanctum\HasApiTokens;
  * @property      int|null    $guest_of_id       Гость по ссылке для звонка: кто его пригласил
  * @property      string      $name              Имя пользователя
  * @property      string|null $username          Ник для поиска (нижний регистр, без @)
+ * @property      string|null $avatar_path       Аватарка на диске вложений (JPEG 512×512)
  * @property      string      $email             Email, он же логин
  * @property      Carbon|null $email_verified_at Дата подтверждения email
  * @property      string      $password          Хэш пароля (bcrypt)
@@ -35,6 +36,7 @@ final class User extends Authenticatable
         'guest_of_id',
         'name',
         'username',
+        'avatar_path',
         'email',
         'password',
     ];

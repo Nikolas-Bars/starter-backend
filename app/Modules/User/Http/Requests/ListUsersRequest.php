@@ -14,8 +14,8 @@ use Illuminate\Foundation\Http\FormRequest;
  *     name="search",
  *     in="query",
  *     required=false,
- *     description="Часть имени или ника (можно с @) либо email целиком",
- *     @OA\Schema(type="string", maxLength=100, example="иван")
+ *     description="Часть ника, можно с @. По имени и email не ищет",
+ *     @OA\Schema(type="string", maxLength=100, example="vanya")
  * )
  */
 final class ListUsersRequest extends FormRequest

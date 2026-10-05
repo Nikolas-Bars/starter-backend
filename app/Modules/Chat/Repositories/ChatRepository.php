@@ -69,7 +69,7 @@ final class ChatRepository extends BaseRepository
         return $query->paginate($perPage);
     }
 
-    public function updateLastMessage(Chat $chat, int $messageId): void
+    public function updateLastMessage(Chat $chat, ?int $messageId): void
     {
         $chat->update(['last_message_id' => $messageId]);
     }
