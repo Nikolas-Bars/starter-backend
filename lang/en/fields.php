@@ -5,6 +5,7 @@ declare(strict_types=1);
 return [
     'register' => [
         'name'        => 'name',
+        'username'    => 'username',
         'email'       => 'email',
         'password'    => 'password',
         'device_name' => 'device name',
@@ -20,6 +21,7 @@ return [
     'profile' => [
         'name'     => 'name',
         'username' => 'username',
+        'avatar'   => 'avatar',
     ],
     'chat_open' => [
         'user_id' => 'recipient',
@@ -45,6 +47,10 @@ return [
     'chat_list' => [
         'folder_id' => 'folder',
         'page'      => 'page',
+    ],
+    'chat_forward' => [
+        'message_id' => 'message',
+        'client_id'  => 'message identifier',
     ],
     'chat_reaction' => [
         'emoji' => 'reaction',

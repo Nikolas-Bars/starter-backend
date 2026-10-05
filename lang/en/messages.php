@@ -33,6 +33,8 @@ return [
         'read'             => 'Messages marked as read.',
         'reacted'          => 'Reaction saved.',
         'reaction_removed' => 'Reaction removed.',
+        'message_deleted'  => 'Message deleted.',
+        'forwarded'        => 'Message forwarded.',
         'file_uploaded'    => 'File uploaded.',
         'file_allowed'     => 'File access granted.',
     ],
@@ -45,5 +47,7 @@ return [
     'user' => [
         'list'            => 'User list.',
         'profile_updated' => 'Profile saved.',
+        'avatar_updated'  => 'Avatar updated.',
+        'avatar_deleted'  => 'Avatar removed.',
     ],
 ];

@@ -22,11 +22,12 @@ final class AppendChatMessageTask extends BaseTask
     /**
      * Сохраняет сообщение и делает его последним в чате. Вызывать внутри транзакции.
      *
-     * @param Call|null $call Звонок для служебного сообщения; null — обычный текст
+     * @param Call|null                                   $call          Звонок для служебного сообщения; null — обычный текст
+     * @param array{user_id: int|null, name: string}|null $forwardedFrom Автор оригинала, если сообщение пересланное
      */
-    public function run(Chat $chat, int $userId, string $clientId, string $body, ?Call $call = null): ChatMessage
+    public function run(Chat $chat, int $userId, string $clientId, string $body, ?Call $call = null, ?array $forwardedFrom = null): ChatMessage
     {
-        $message = $this->messageRepository->store($chat->id, $userId, $clientId, $body, $call);
+        $message = $this->messageRepository->store($chat->id, $userId, $clientId, $body, $call, $forwardedFrom);
 
         $this->chatRepository->updateLastMessage($chat, $message->id);
 

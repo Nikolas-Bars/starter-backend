@@ -29,6 +29,14 @@ use Illuminate\Http\Resources\Json\JsonResource;
  *     @OA\Property(property="type", type="string", enum={"text", "call"}, description="call — служебное сообщение о звонке, body пустой"),
  *     @OA\Property(property="body", type="string", example="Привет!"),
  *     @OA\Property(
+ *         property="forwarded_from",
+ *         type="object",
+ *         nullable=true,
+ *         description="Пересланное сообщение: автор оригинала (имя — на момент пересылки; user_id пуст, если автора удалили)",
+ *         @OA\Property(property="user_id", type="integer", nullable=true, example=3),
+ *         @OA\Property(property="name", type="string", example="Мария")
+ *     ),
+ *     @OA\Property(
  *         property="call",
  *         type="object",
  *         nullable=true,
@@ -62,13 +70,17 @@ final class ChatMessageResource extends JsonResource
     public function toArray(Request $request): array
     {
         return [
-            'id'        => $this->id,
-            'chat_id'   => $this->chat_id,
-            'user_id'   => $this->user_id,
-            'client_id' => $this->client_id,
-            'type'      => $this->type->value,
-            'body'      => $this->body,
-            'call'      => $this->call === null ? null : [
+            'id'             => $this->id,
+            'chat_id'        => $this->chat_id,
+            'user_id'        => $this->user_id,
+            'client_id'      => $this->client_id,
+            'type'           => $this->type->value,
+            'body'           => $this->body,
+            'forwarded_from' => $this->forwarded_from_name === null ? null : [
+                'user_id' => $this->forwarded_from_user_id,
+                'name'    => $this->forwarded_from_name,
+            ],
+            'call' => $this->call === null ? null : [
                 'id'               => $this->call->id,
                 'status'           => $this->call->status->value,
                 'duration_seconds' => $this->call->durationSeconds(),

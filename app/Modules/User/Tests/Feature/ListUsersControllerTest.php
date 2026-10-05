@@ -26,39 +26,47 @@ final class ListUsersControllerTest extends TestCase
             ->assertJsonMissingPath('data.items.0.password');
     }
 
-    public function testSearchesByNameAndExactEmail(): void
+    public function testDoesNotSearchByNameOrEmail(): void
     {
         $this->actingAsUser();
-        User::factory()->create(['name' => 'Иван Петров', 'email' => 'ivan@example.com']);
-        User::factory()->create(['name' => 'Мария', 'email' => 'maria@example.com']);
+        User::factory()->create(['name' => 'Иван Петров', 'email' => 'ivan@example.com', 'username' => 'vanya']);
 
-        $this->getJson('/api/users?' . \http_build_query(['search' => 'Петров']))
-            ->assertOk()
-            ->assertJsonCount(1, 'data.items')
-            ->assertJsonPath('data.items.0.name', 'Иван Петров');
-
-        $this->getJson('/api/users?' . \http_build_query(['search' => 'maria@example.com']))
-            ->assertOk()
-            ->assertJsonCount(1, 'data.items')
-            ->assertJsonPath('data.items.0.name', 'Мария');
-
-        $this->getJson('/api/users?' . \http_build_query(['search' => 'maria@']))
-            ->assertOk()
-            ->assertJsonCount(0, 'data.items');
+        foreach (['Петров', 'ivan@example.com'] as $search) {
+            $this->getJson('/api/users?' . \http_build_query(['search' => $search]))
+                ->assertOk()
+                ->assertJsonCount(0, 'data.items');
+        }
     }
 
-    public function testSearchesByUsernameWithOrWithoutAt(): void
+    public function testSearchesByPartOfUsernameWithOrWithoutAt(): void
     {
         $this->actingAsUser();
         User::factory()->create(['name' => 'Иван Петров', 'username' => 'vanya']);
         User::factory()->create(['name' => 'Мария', 'username' => 'masha']);
+        User::factory()->create(['name' => 'Без ника', 'username' => null]);
 
-        foreach (['vanya', '@vanya'] as $search) {
+        foreach (['vanya', '@vanya', 'VAN', 'any'] as $search) {
             $this->getJson('/api/users?' . \http_build_query(['search' => $search]))
                 ->assertOk()
                 ->assertJsonCount(1, 'data.items')
                 ->assertJsonPath('data.items.0.username', 'vanya');
         }
+    }
+
+    public function testTreatsLikeWildcardsLiterally(): void
+    {
+        $this->actingAsUser();
+        User::factory()->create(['username' => 'vanya']);
+        User::factory()->create(['username' => 'ma_sha']);
+
+        $this->getJson('/api/users?' . \http_build_query(['search' => '%']))
+            ->assertOk()
+            ->assertJsonCount(0, 'data.items');
+
+        $this->getJson('/api/users?' . \http_build_query(['search' => '_']))
+            ->assertOk()
+            ->assertJsonCount(1, 'data.items')
+            ->assertJsonPath('data.items.0.username', 'ma_sha');
     }
 
     public function testHidesGuestsAndIsClosedForThem(): void

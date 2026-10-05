@@ -10,6 +10,7 @@ final class RegisterDTO extends Data
 {
     public function __construct(
         public string $name,
+        public string $username,
         public string $email,
         public string $password,
     ) {

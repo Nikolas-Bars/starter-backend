@@ -8,7 +8,6 @@ use App\Modules\User\DTO\UserStoreDTO;
 use App\Modules\User\Models\User;
 use App\Repositories\BaseRepository;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
-use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Str;
 
 /**
@@ -29,9 +28,14 @@ final class UserRepository extends BaseRepository
         return $this->query()->where('email', $email)->first();
     }
 
+    public function findByAvatarPath(string $path): ?User
+    {
+        return $this->query()->where('avatar_path', $path)->first();
+    }
+
     /**
-     * Все пользователи, кроме указанного, по имени; поиск — по вхождению в имя или ник и по точному email.
-     * Email ищется только целиком: по частям его можно было бы подобрать посимвольно.
+     * Все пользователи, кроме указанного, по имени; поиск — только по вхождению в ник.
+     * По имени и email не ищем: найти человека можно, только зная его ник.
      *
      * @return LengthAwarePaginator<int, User>
      */
@@ -41,10 +45,8 @@ final class UserRepository extends BaseRepository
         $query->getQuery()->whereNull('guest_of_id');
 
         if ($search !== null) {
-            $pattern = '%' . $search . '%';
-            $query->where(static function (Builder $query) use ($pattern, $search): void {
-                $query->getQuery()->whereLike('name', $pattern)->orWhereLike('username', $pattern)->orWhere('email', $search);
-            });
+            // Подстрока, а не LIKE: «_» разрешён в нике и должен искаться как есть (ники хранятся в нижнем регистре)
+            $query->getQuery()->whereNotNull('username')->whereRaw('INSTR(username, ?) > 0', [\mb_strtolower($search)]);
         }
 
         $query->getQuery()->orderBy('name')->orderBy('id');
@@ -57,6 +59,7 @@ final class UserRepository extends BaseRepository
         // Пароль хэшируется cast'ом `hashed` модели — сюда приходит открытым текстом
         return $this->create([
             'name'     => $dto->name,
+            'username' => $dto->username,
             'email'    => $dto->email,
             'password' => $dto->password,
         ]);
@@ -70,6 +73,11 @@ final class UserRepository extends BaseRepository
         ]);
 
         return $user;
+    }
+
+    public function updateAvatar(User $user, ?string $path): void
+    {
+        $user->update(['avatar_path' => $path]);
     }
 
     /**

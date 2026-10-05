@@ -48,6 +48,12 @@ return [
         'threads'    => 2,
     ],
 
+    // Аватарка: квадрат по центру, JPEG без метаданных
+    'avatar' => [
+        'side'    => 512,
+        'quality' => 85,
+    ],
+
     'voice' => [
         'audio_kbps'     => 64,
         'waveform_peaks' => 64,
