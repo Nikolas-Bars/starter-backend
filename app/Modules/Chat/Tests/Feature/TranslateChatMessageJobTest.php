@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace App\Modules\Chat\Tests\Feature;
 
+use App\Modules\Chat\DTO\HeldChatEventDTO;
+use App\Modules\Chat\Jobs\DeliverHeldChatEventJob;
 use App\Modules\Chat\Jobs\TranslateChatMessageJob;
 use App\Modules\Chat\Models\Chat;
 use App\Modules\Chat\Models\ChatMessage;
@@ -138,6 +140,116 @@ final class TranslateChatMessageJobTest extends TestCase
 
         self::assertSame(0, $message->translations()->count());
         Queue::assertPushed(TranslateChatMessageJob::class, 2);
+    }
+
+    public function testOtherLanguageGetsMessageAndEditAlreadyTranslated(): void
+    {
+        Http::fake(['api.openai.com/*' => Http::sequence()
+            ->push($this->openAiReply('vi', ['ru' => 'Всё хорошо']))
+            ->push($this->openAiReply('vi', ['ru' => 'Всё очень хорошо']))]);
+        $this->actingAsUser($this->grandson);
+
+        $id = $this->postJson('/api/chats/' . $this->chat->id . '/messages', ['body' => 'Con ổn ạ', 'client_id' => (string)Str::uuid()])
+            ->assertCreated()
+            ->json('data.id');
+
+        $events = $this->app->make(RealtimeBus::class)->drain(10);
+        self::assertSame(['chat.message', 'chat.message', 'chat.message_translated'], \array_column(\array_column($events, 'message'), 'type'));
+        self::assertSame([$this->grandson->id], $events[0]['user_ids']);
+        self::assertSame([], $events[0]['message']['data']['message']['translations']);
+        self::assertSame([$this->grandma->id], $events[1]['user_ids']);
+        self::assertSame($id, $events[1]['message']['data']['message']['id']);
+        self::assertSame('vi', $events[1]['message']['data']['message']['body_locale']);
+        self::assertSame(['ru' => 'Всё хорошо'], $events[1]['message']['data']['message']['translations']);
+        self::assertSame([$this->grandson->id], $events[2]['user_ids']);
+
+        $this->patchJson('/api/chats/' . $this->chat->id . '/messages/' . $id, ['body' => 'Con rất ổn ạ'])->assertOk();
+
+        $events = $this->app->make(RealtimeBus::class)->drain(10);
+        self::assertSame(['chat.message_updated', 'chat.message_updated', 'chat.message_translated'], \array_column(\array_column($events, 'message'), 'type'));
+        self::assertSame([$this->grandma->id], $events[1]['user_ids']);
+        self::assertSame($this->chat->id, $events[1]['message']['data']['chat_id']);
+        self::assertSame('Con rất ổn ạ', $events[1]['message']['data']['message']['body']);
+        self::assertSame(['ru' => 'Всё очень хорошо'], $events[1]['message']['data']['message']['translations']);
+    }
+
+    public function testSameLanguageGetsMessageAtOnce(): void
+    {
+        $this->grandson->update(['locale' => 'ru']);
+        Http::fake();
+        $this->actingAsUser($this->grandson);
+
+        $this->postJson('/api/chats/' . $this->chat->id . '/messages', ['body' => 'Привет', 'client_id' => (string)Str::uuid()])->assertCreated();
+
+        $events = $this->app->make(RealtimeBus::class)->drain(10);
+        self::assertCount(1, $events);
+        self::assertSame('chat.message', $events[0]['message']['type']);
+        self::assertEqualsCanonicalizing([$this->grandson->id, $this->grandma->id], $events[0]['user_ids']);
+        Http::assertNothingSent();
+    }
+
+    public function testProviderErrorDeliversOriginalAtOnceAndRetryTranslates(): void
+    {
+        $message = ChatMessage::factory()->inChat($this->chat, $this->grandson)->create(['body' => 'Con ổn ạ']);
+        $held    = new HeldChatEventDTO('chat.message', [$this->grandma->id], 'held-1');
+        Http::fake(['api.openai.com/*' => Http::sequence()
+            ->push([], 503)
+            ->push($this->openAiReply('vi', ['ru' => 'Всё хорошо']))]);
+
+        try {
+            dispatch(new TranslateChatMessageJob($message->id, $held));
+            self::fail('Ошибка провайдера должна дойти до очереди');
+        } catch (TranslationFailedException) {
+        }
+
+        $events = $this->app->make(RealtimeBus::class)->drain(10);
+        self::assertCount(1, $events);
+        self::assertSame([$this->grandma->id], $events[0]['user_ids']);
+        self::assertSame('chat.message', $events[0]['message']['type']);
+        self::assertSame('Con ổn ạ', $events[0]['message']['data']['message']['body']);
+        self::assertSame([], $events[0]['message']['data']['message']['translations']);
+
+        dispatch(new TranslateChatMessageJob($message->id, $held));
+
+        $events = $this->app->make(RealtimeBus::class)->drain(10);
+        self::assertCount(1, $events);
+        self::assertSame('chat.message_translated', $events[0]['message']['type']);
+        self::assertEqualsCanonicalizing([$this->grandson->id, $this->grandma->id], $events[0]['user_ids']);
+    }
+
+    public function testTimerDeliversOriginalOnceAndTranslationFollows(): void
+    {
+        $message = ChatMessage::factory()->inChat($this->chat, $this->grandson)->create(['body' => 'Con ổn ạ']);
+        $held    = new HeldChatEventDTO('chat.message', [$this->grandma->id], 'held-2');
+        $this->fakeOpenAi('vi', ['ru' => 'Всё хорошо']);
+
+        dispatch(new DeliverHeldChatEventJob($message->id, $held));
+        dispatch(new DeliverHeldChatEventJob($message->id, $held));
+
+        $events = $this->app->make(RealtimeBus::class)->drain(10);
+        self::assertCount(1, $events);
+        self::assertSame([$this->grandma->id], $events[0]['user_ids']);
+        self::assertSame([], $events[0]['message']['data']['message']['translations']);
+
+        dispatch(new TranslateChatMessageJob($message->id, $held));
+
+        $events = $this->app->make(RealtimeBus::class)->drain(10);
+        self::assertCount(1, $events);
+        self::assertSame('chat.message_translated', $events[0]['message']['type']);
+        self::assertEqualsCanonicalizing([$this->grandson->id, $this->grandma->id], $events[0]['user_ids']);
+    }
+
+    public function testTimerIsQueuedWithHoldDelay(): void
+    {
+        Config::set('translation.hold_seconds', 7);
+        Queue::fake();
+        $this->actingAsUser($this->grandson);
+
+        $this->postJson('/api/chats/' . $this->chat->id . '/messages', ['body' => 'Con ổn', 'client_id' => (string)Str::uuid()])->assertCreated();
+
+        Queue::assertPushed(TranslateChatMessageJob::class, fn(TranslateChatMessageJob $job): bool => $job->held?->user_ids === [$this->grandma->id]);
+        Queue::assertPushed(DeliverHeldChatEventJob::class, static fn(DeliverHeldChatEventJob $job): bool => $job->delay === 7);
+        self::assertSame([$this->grandson->id], $this->app->make(RealtimeBus::class)->drain(10)[0]['user_ids']);
     }
 
     public function testNothingQueuedWithoutKey(): void

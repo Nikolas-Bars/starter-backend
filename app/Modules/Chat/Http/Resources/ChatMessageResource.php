@@ -32,7 +32,7 @@ use Illuminate\Http\Resources\Json\JsonResource;
  *     @OA\Property(
  *         property="translations",
  *         type="object",
- *         description="Перевод body на языки интерфейса участников (users.locale), кроме языка оригинала. Пусто — переводить не нужно или перевод ещё идёт: он придёт событием chat.message_translated",
+ *         description="Перевод body на языки интерфейса участников (users.locale), кроме языка оригинала. Пусто — переводить не нужно или перевод ещё идёт: он придёт событием chat.message_translated. Собеседнику с другим языком chat.message и chat.message_updated приходят, когда перевод готов (но не позже translation.hold_seconds), — уже с ним",
  *         additionalProperties=@OA\Schema(type="string"),
  *         example={"vi": "Xin chào!"}
  *     ),

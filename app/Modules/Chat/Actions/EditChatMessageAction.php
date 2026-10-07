@@ -10,15 +10,12 @@ use App\Modules\Chat\Exceptions\ChatMessageAnsweredException;
 use App\Modules\Chat\Exceptions\ChatMessageNotEditableException;
 use App\Modules\Chat\Exceptions\ChatMessageNotFoundException;
 use App\Modules\Chat\Exceptions\ChatNotFoundException;
-use App\Modules\Chat\Http\Resources\ChatMessageResource;
 use App\Modules\Chat\Models\ChatMessage;
 use App\Modules\Chat\Tasks\EditChatMessageTask;
 use App\Modules\Chat\Tasks\FindChatMemberTask;
 use App\Modules\Chat\Tasks\FindChatMessageTask;
 use App\Modules\Chat\Tasks\IsChatMessageAnsweredTask;
-use App\Modules\Chat\Tasks\ListChatMemberIdsTask;
-use App\Modules\Chat\Tasks\PublishChatEventTask;
-use App\Modules\Chat\Tasks\QueueChatMessageTranslationTask;
+use App\Modules\Chat\Tasks\NotifyChatMessageTask;
 use App\Modules\User\Models\User;
 
 final class EditChatMessageAction extends BaseAction
@@ -30,15 +27,14 @@ final class EditChatMessageAction extends BaseAction
         private readonly FindChatMessageTask       $findChatMessageTask,
         private readonly IsChatMessageAnsweredTask $isChatMessageAnsweredTask,
         private readonly EditChatMessageTask       $editChatMessageTask,
-        private readonly ListChatMemberIdsTask     $listChatMemberIdsTask,
-        private readonly PublishChatEventTask      $publishChatEventTask,
-        private readonly QueueChatMessageTranslationTask $queueChatMessageTranslationTask,
+        private readonly NotifyChatMessageTask     $notifyChatMessageTask,
     ) {
     }
 
     /**
      * Меняет текст своего сообщения, пока на него не ответили. Участники получают chat.message_updated
-     * с сообщением целиком и без переводов: перевод нового текста придёт событием chat.message_translated.
+     * с сообщением целиком: собеседник с другим языком — вместе с переводом нового текста (NotifyChatMessageTask),
+     * автор — без переводов, перевод придёт ему событием chat.message_translated.
      * Тот же текст — без изменений и без события.
      *
      * @throws ChatNotFoundException
@@ -69,11 +65,7 @@ final class EditChatMessageAction extends BaseAction
         $message = $this->editChatMessageTask->run($message, $body);
 
         if ($message->wasChanged('body')) {
-            $this->publishChatEventTask->run($this->listChatMemberIdsTask->run($chatId), self::EVENT, [
-                'chat_id' => $chatId,
-                'message' => ChatMessageResource::make($message)->resolve(),
-            ]);
-            $this->queueChatMessageTranslationTask->run($message);
+            $this->notifyChatMessageTask->run($message, self::EVENT);
         }
 
         return $message;

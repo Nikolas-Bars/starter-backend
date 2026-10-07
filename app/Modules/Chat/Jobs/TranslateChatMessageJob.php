@@ -6,6 +6,7 @@ namespace App\Modules\Chat\Jobs;
 
 use App\Jobs\BaseJob;
 use App\Modules\Chat\Actions\TranslateChatMessageAction;
+use App\Modules\Chat\DTO\HeldChatEventDTO;
 
 /**
  * В задаче только id: текст сообщения не попадает ни в Redis очереди, ни в failed_jobs
@@ -26,11 +27,12 @@ final class TranslateChatMessageJob extends BaseJob
 
     public function __construct(
         public readonly int $messageId,
+        public readonly ?HeldChatEventDTO $held = null,
     ) {
     }
 
     public function handle(TranslateChatMessageAction $action): void
     {
-        $action->run($this->messageId);
+        $action->run($this->messageId, $this->held);
     }
 }
