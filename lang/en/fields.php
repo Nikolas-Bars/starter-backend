@@ -23,6 +23,9 @@ return [
         'username' => 'username',
         'avatar'   => 'avatar',
     ],
+    'profile_locale' => [
+        'locale' => 'language',
+    ],
     'chat_open' => [
         'user_id' => 'recipient',
     ],

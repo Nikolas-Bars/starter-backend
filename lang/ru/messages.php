@@ -50,5 +50,6 @@ return [
         'profile_updated' => 'Профиль сохранён.',
         'avatar_updated'  => 'Аватарка обновлена.',
         'avatar_deleted'  => 'Аватарка удалена.',
+        'locale_updated'  => 'Язык сохранён.',
     ],
 ];

@@ -58,9 +58,11 @@ docker compose exec -T mariadb sh -c \
     'MYSQL_PWD="$MARIADB_ROOT_PASSWORD" exec mariadb-dump -uroot --single-transaction --routines --triggers "$MARIADB_DATABASE"' \
     > "$work/database.sql"
 cp .env "$work/env"
-if [[ -f secrets/firebase-credentials.json ]]; then
-    cp secrets/firebase-credentials.json "$work/"
-fi
+for secret in firebase-credentials.json openai-api-key anthropic-api-key; do
+    if [[ -f "secrets/$secret" ]]; then
+        cp "secrets/$secret" "$work/"
+    fi
+done
 
 tar -C "$work" -czf - . | age -r "$recipient" > "$file.tmp"
 mv "$file.tmp" "$file"

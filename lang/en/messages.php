@@ -50,5 +50,6 @@ return [
         'profile_updated' => 'Profile saved.',
         'avatar_updated'  => 'Avatar updated.',
         'avatar_deleted'  => 'Avatar removed.',
+        'locale_updated'  => 'Language saved.',
     ],
 ];

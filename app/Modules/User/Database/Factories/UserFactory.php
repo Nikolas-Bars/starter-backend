@@ -29,6 +29,7 @@ final class UserFactory extends Factory
     {
         return [
             'name'              => fake()->name(),
+            'locale'            => 'ru',
             'email'             => fake()->unique()->safeEmail(),
             'email_verified_at' => now(),
             'password'          => self::$passwordHash ??= Hash::make(self::DEFAULT_PASSWORD),

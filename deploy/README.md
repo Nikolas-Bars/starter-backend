@@ -83,11 +83,35 @@ ssh starter 'chmod 600 /opt/starter/starter-backend/deploy/secrets/firebase-cred
 
 Без файла push выключены, а звонок собеседнику не в сети сразу завершается как «не в сети».
 
+## Автоперевод
+
+Сообщения между людьми с разными языками интерфейса переводит нейросеть (`config/translation.php`,
+провайдер — `TRANSLATION_PROVIDER` в `deploy/.env`). Ключ API — секрет, как ключ Firebase: в git
+и в `deploy/.env` его нет, он лежит файлом в `deploy/secrets/` и монтируется в контейнер только для
+чтения. API читает его в момент запроса, поэтому ключа не видно ни в `docker inspect`, ни в окружении
+процессов, ни в кэше конфига. Клиентам (фронтенд, приложение) ключ не нужен и не передаётся.
+
+```bash
+# Ключ вводится с клавиатуры и не попадает в историю shell на Маке и на сервере
+read -rs key && printf '%s' "$key" | ssh starter 'umask 077 && cat > /opt/starter/starter-backend/deploy/secrets/openai-api-key && chown 33:33 /opt/starter/starter-backend/deploy/secrets/openai-api-key'; unset key
+ssh starter 'cd /opt/starter/starter-backend/deploy && docker compose up -d php'
+```
+
+Для Anthropic то же самое с файлом `anthropic-api-key` и `TRANSLATION_PROVIDER=anthropic`. Без файла
+перевод выключен: собеседник видит оригинал. Ключ попадает в зашифрованный ночной бэкап (раздел «Бэкапы»).
+
+Ключ заводится отдельным проектом у провайдера, только для этого сервера:
+
+- OpenAI: Projects → новый проект → API keys → Restricted, доступ только к Model capabilities
+  (Chat completions / Responses); в Limits — месячный бюджет. Anthropic: отдельный Workspace
+  с лимитом расходов.
+- Утёк ключ — отозвать его у провайдера, положить новый файл и `docker compose up -d php`.
+
 ## Бэкапы
 
 Каждый день в 03:30 (время сервера, UTC) `deploy/backup.sh` делает две копии:
 
-1. **База и настройки.** Всё, чего нет в git, — дамп БД, `deploy/.env` и ключ Firebase — в одном
+1. **База и настройки.** Всё, чего нет в git, — дамп БД, `deploy/.env`, ключи Firebase и нейросети — в одном
    архиве, зашифрованном [age](https://age-encryption.org). Архив кладётся в `/var/backups/starter/`
    (хранятся последние 14 дней) и приходит в Telegram.
 2. **Файлы чатов** — в Cloudflare R2, зашифрованными (раздел «Файлы чатов»). В подписи к архиву

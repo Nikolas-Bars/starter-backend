@@ -36,6 +36,11 @@
         <env name="REALTIME_DRIVER" value="array" force="true"/>
         <!-- Тесты не ходят в настоящий Firebase, даже если ключ лежит в storage -->
         <env name="FCM_CREDENTIALS" value="" force="true"/>
+        <!-- И в настоящую нейросеть тоже: ключ из .env не должен попасть в тесты -->
+        <env name="OPENAI_API_KEY" value="" force="true"/>
+        <env name="OPENAI_API_KEY_FILE" value="" force="true"/>
+        <env name="ANTHROPIC_API_KEY" value="" force="true"/>
+        <env name="ANTHROPIC_API_KEY_FILE" value="" force="true"/>
         <env name="SESSION_DRIVER" value="array" force="true"/>
         <env name="SANCTUM_TOKEN_EXPIRATION" value="60" force="true"/>
     </php>

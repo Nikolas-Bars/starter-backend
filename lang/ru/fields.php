@@ -24,6 +24,9 @@ return [
         'username' => 'ник',
         'avatar'   => 'аватарка',
     ],
+    'profile_locale' => [
+        'locale' => 'язык',
+    ],
     'chat_open' => [
         'user_id' => 'собеседник',
     ],

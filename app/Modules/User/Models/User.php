@@ -16,6 +16,7 @@ use Laravel\Sanctum\HasApiTokens;
  * @property      string      $name              Имя пользователя
  * @property      string|null $username          Ник для поиска (нижний регистр, без @)
  * @property      string|null $avatar_path       Аватарка на диске вложений (JPEG 512×512)
+ * @property      string      $locale            Язык интерфейса из app.supported_locales; на него переводятся входящие сообщения
  * @property      string      $email             Email, он же логин
  * @property      Carbon|null $email_verified_at Дата подтверждения email
  * @property      string      $password          Хэш пароля (bcrypt)
@@ -37,6 +38,7 @@ final class User extends Authenticatable
         'name',
         'username',
         'avatar_path',
+        'locale',
         'email',
         'password',
     ];

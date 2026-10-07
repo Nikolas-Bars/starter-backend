@@ -10,6 +10,7 @@ use App\Modules\Auth\DTO\RegisterDTO;
 use App\Modules\Auth\Tasks\IssueAccessTokenTask;
 use App\Modules\User\DTO\UserStoreDTO;
 use App\Modules\User\Tasks\CreateUserTask;
+use Illuminate\Support\Facades\App;
 use Illuminate\Support\Facades\DB;
 
 final class RegisterAction extends BaseAction
@@ -22,6 +23,7 @@ final class RegisterAction extends BaseAction
 
     /**
      * Создаёт пользователя и сразу выдаёт токен — после регистрации клиент уже авторизован.
+     * Язык интерфейса — тот, на котором пришёл запрос (SetLocale).
      */
     public function run(RegisterDTO $dto, string $deviceName): AuthTokenDTO
     {
@@ -31,6 +33,7 @@ final class RegisterAction extends BaseAction
                 username: $dto->username,
                 email: $dto->email,
                 password: $dto->password,
+                locale: App::getLocale(),
             ));
 
             return $this->issueAccessTokenTask->run($user, $deviceName);

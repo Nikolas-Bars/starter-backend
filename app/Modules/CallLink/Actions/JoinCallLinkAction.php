@@ -11,6 +11,7 @@ use App\Modules\CallLink\DTO\JoinCallLinkDTO;
 use App\Modules\CallLink\Exceptions\CallLinkNotFoundException;
 use App\Modules\CallLink\Tasks\FindCallLinkByCodeTask;
 use App\Modules\User\Tasks\CreateGuestUserTask;
+use Illuminate\Support\Facades\App;
 use Illuminate\Support\Facades\Config;
 use Illuminate\Support\Facades\DB;
 
@@ -34,7 +35,7 @@ final class JoinCallLinkAction extends BaseAction
         $link = $this->findCallLinkByCodeTask->run($code) ?? throw new CallLinkNotFoundException();
 
         return DB::transaction(function () use ($link, $dto): AuthTokenDTO {
-            $guest = $this->createGuestUserTask->run($dto->name, $link->user_id);
+            $guest = $this->createGuestUserTask->run($dto->name, $link->user_id, App::getLocale());
 
             return $this->issueAccessTokenTask->run(
                 $guest,

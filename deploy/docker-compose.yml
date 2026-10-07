@@ -13,6 +13,10 @@ services:
     environment:
       # Ключ Firebase для push (deploy/README.md, «Push-уведомления»). Нет файла — push выключены
       FCM_CREDENTIALS: /run/secrets/starter/firebase-credentials.json
+      # Ключи нейросети для автоперевода (deploy/README.md, «Автоперевод»): файлы, а не переменные —
+      # так их не видно в docker inspect и окружении процессов. Нет файла — перевод выключен
+      OPENAI_API_KEY_FILE: /run/secrets/starter/openai-api-key
+      ANTHROPIC_API_KEY_FILE: /run/secrets/starter/anthropic-api-key
       # Файлы чатов. Тот же том Caddy отдаёт по подписанным ссылкам, бэкап копирует его в R2
       ATTACHMENTS_PATH: /var/www/attachments
     volumes:

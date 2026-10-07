@@ -60,9 +60,17 @@ final class UserRepository extends BaseRepository
         return $this->create([
             'name'     => $dto->name,
             'username' => $dto->username,
+            'locale'   => $dto->locale,
             'email'    => $dto->email,
             'password' => $dto->password,
         ]);
+    }
+
+    public function updateLocale(User $user, string $locale): User
+    {
+        $user->update(['locale' => $locale]);
+
+        return $user;
     }
 
     public function updateProfile(User $user, string $name, ?string $username): User
@@ -83,11 +91,12 @@ final class UserRepository extends BaseRepository
     /**
      * Гость входит только по выданному токену: email и пароль случайные, войти с ними нельзя.
      */
-    public function storeGuest(string $name, int $hostId): User
+    public function storeGuest(string $name, int $hostId, string $locale): User
     {
         return $this->create([
             'guest_of_id' => $hostId,
             'name'        => $name,
+            'locale'      => $locale,
             'email'       => 'guest-' . Str::uuid()->toString() . '@guest.invalid',
             'password'    => Str::random(64),
         ]);
