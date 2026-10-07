@@ -91,23 +91,75 @@ ssh starter 'chmod 600 /opt/starter/starter-backend/deploy/secrets/firebase-cred
 чтения. API читает его в момент запроса, поэтому ключа не видно ни в `docker inspect`, ни в окружении
 процессов, ни в кэше конфига. Клиентам (фронтенд, приложение) ключ не нужен и не передаётся.
 
+Сейчас в проде работает Anthropic (Claude, модель `claude-haiku-4-5`). Без файла с ключом перевод
+выключен: собеседник видит оригинал. Переводят два процесса `translation` в supervisor (отдельная
+очередь, чтобы ожидание нейросети не задерживало push о звонках); не ответила — задача повторится
+через 10 секунд и через минуту, после третьей неудачи остаётся оригинал. Ключ попадает в
+зашифрованный ночной бэкап (раздел «Бэкапы»).
+
+### Ключ Anthropic: получить
+
+1. [console.anthropic.com](https://console.anthropic.com) — отдельный кабинет API; подписка
+   Claude Pro на claude.ai к нему не относится. При регистрации — **Individual**.
+2. **Billing** → купить кредиты (от $5). Оплата по факту, не подписка: перевод одного сообщения —
+   около $0.0015, $5 хватает примерно на 3–4 тысячи переводов. Кредиты сгорают через год.
+   **Auto-reload не включать**: тогда с карты списывается только то, что купили вручную, а при
+   нулевом балансе Anthropic просто отклоняет запросы и чат показывает оригиналы.
+3. **Settings → Limits** — месячный лимит расходов и письмо при приближении к нему. Если есть
+   **Workspaces** — завести отдельный под этот сервер и ключ создавать в нём.
+4. **API Keys → Create Key**. Срок действия — без срока или максимальный: когда ключ истечёт,
+   перевод тихо выключится. Ключ (`sk-ant-…`) показывается один раз — нажать **Copy key** и сразу
+   перейти к следующему разделу. Не отправлять его в чаты и не делать скриншот окна с ключом.
+
+### Ключ Anthropic: подключить
+
+Все команды — в Терминале на Маке, из любой папки (`ssh starter` уже настроен, см. начало файла).
+
+**1. Положить ключ на сервер.** Команда молча ждёт ввода: вставить ключ (Cmd+V) и нажать Enter.
+На экране ничего не появится — так и задумано: ключ не попадёт ни в историю команд на Маке и
+сервере, ни в аргументы процессов.
+
 ```bash
-# Ключ вводится с клавиатуры и не попадает в историю shell на Маке и на сервере
-read -rs key && printf '%s' "$key" | ssh starter 'umask 077 && cat > /opt/starter/starter-backend/deploy/secrets/openai-api-key && chown 33:33 /opt/starter/starter-backend/deploy/secrets/openai-api-key'; unset key
-ssh starter 'cd /opt/starter/starter-backend/deploy && docker compose up -d php'
+read -rs key && printf '%s' "$key" | ssh starter 'umask 077 && cat > /opt/starter/starter-backend/deploy/secrets/anthropic-api-key && chown 33:33 /opt/starter/starter-backend/deploy/secrets/anthropic-api-key'; unset key
 ```
 
-Для Anthropic то же самое с файлом `anthropic-api-key` и `TRANSLATION_PROVIDER=anthropic`. Без файла
-перевод выключен: собеседник видит оригинал. Переводят два процесса `translation` в supervisor
-(отдельная очередь, чтобы ожидание нейросети не задерживало push о звонках); не ответила — задача
-повторится через 10 секунд и через минуту, после третьей неудачи остаётся оригинал. Ключ попадает в зашифрованный ночной бэкап (раздел «Бэкапы»).
+**2. Проверить ключ.** `200` — ключ принят; `401` — ключ вставлен не целиком или отозван.
 
-Ключ заводится отдельным проектом у провайдера, только для этого сервера:
+```bash
+ssh starter 'printf "header = \"x-api-key: %s\"\n" "$(cat /opt/starter/starter-backend/deploy/secrets/anthropic-api-key)" | curl -s -o /dev/null -w "%{http_code}\n" --config - -H "anthropic-version: 2023-06-01" https://api.anthropic.com/v1/models'
+```
 
-- OpenAI: Projects → новый проект → API keys → Restricted, доступ только к Model capabilities
-  (Chat completions / Responses); в Limits — месячный бюджет. Anthropic: отдельный Workspace
-  с лимитом расходов.
-- Утёк ключ — отозвать его у провайдера, положить новый файл и `docker compose up -d php`.
+**3. Включить Anthropic и перезапустить API.** Нужно только при первом подключении или при переходе
+с OpenAI; при замене ключа на новый достаточно `docker compose up -d php`.
+
+```bash
+ssh starter 'cd /opt/starter/starter-backend/deploy && sed -i "/^TRANSLATION_PROVIDER=/d" .env && echo "TRANSLATION_PROVIDER=anthropic" >> .env && docker compose up -d php'
+```
+
+**4. Проверить, что API его подхватил.** Ожидается `anthropic AnthropicTranslator`; `null` — файла
+ключа нет или он пустой.
+
+```bash
+ssh starter 'cd /opt/starter/starter-backend/deploy && docker compose exec -T php php artisan tinker --execute="echo config(\"translation.provider\"), \" \", class_basename(app(App\\Services\\Translation\\TranslatorFactory::class)->make() ?? \"null\");"'
+```
+
+После этого сообщения между собеседниками с разными языками интерфейса переводятся — и на сайте,
+и в приложении; на клиентах ничего менять не нужно.
+
+### Сменить ключ или аккаунт
+
+1. Создать новый ключ (раздел «Ключ Anthropic: получить»).
+2. Шаги 1, 2 и `ssh starter 'cd /opt/starter/starter-backend/deploy && docker compose up -d php'`.
+3. Старый ключ удалить в консоли: **API Keys** → ключ → **Delete**.
+
+Утёк ключ — то же самое, но сначала удалить старый в консоли.
+
+### OpenAI вместо Anthropic
+
+Ключ — на [platform.openai.com](https://platform.openai.com): Projects → новый проект → API keys →
+Restricted, доступ только к Model capabilities (Chat completions / Responses); в Limits — месячный
+бюджет. Подключение — те же шаги с файлом `openai-api-key` вместо `anthropic-api-key` и
+`TRANSLATION_PROVIDER=openai`; модель — `gpt-4o-mini`.
 
 ## Бэкапы
 
