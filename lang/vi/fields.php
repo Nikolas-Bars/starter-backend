@@ -62,6 +62,9 @@ return [
     'chat_folder' => [
         'name' => 'tên thư mục',
     ],
+    'chat_translation_note' => [
+        'note' => 'ghi chú cho bản dịch',
+    ],
     'call_link_join' => [
         'name'        => 'tên',
         'device_name' => 'tên thiết bị',

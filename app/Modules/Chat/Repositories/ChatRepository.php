@@ -74,6 +74,13 @@ final class ChatRepository extends BaseRepository
         $chat->update(['last_message_id' => $messageId]);
     }
 
+    public function updateTranslationNote(Chat $chat, ?string $note): Chat
+    {
+        $chat->update(['translation_note' => $note]);
+
+        return $chat;
+    }
+
     /**
      * @return Builder<Chat>
      */
@@ -83,7 +90,7 @@ final class ChatRepository extends BaseRepository
             ->whereHas('members', static function (Builder $members) use ($userId): void {
                 $members->getQuery()->where('user_id', $userId);
             })
-            ->with(['members.user', 'lastMessage.reactions', 'lastMessage.call', 'lastMessage.attachments'])
+            ->with(['members.user', 'lastMessage.reactions', 'lastMessage.call', 'lastMessage.attachments', 'lastMessage.translations'])
             ->withCount(['messages as unread_count' => static function (Builder $messages) use ($userId): void {
                 ChatMessageRepository::whereUnreadBy($messages, $userId);
             }]);

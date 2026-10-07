@@ -47,10 +47,11 @@ final class ChatMessageRepository extends BaseRepository
             'forwarded_from_name'    => $forwardedFrom['name'] ?? null,
         ]);
 
-        // У нового сообщения реакций и вложений нет: не делаем за этим лишний запрос
+        // У нового сообщения реакций, вложений и переводов нет: не делаем за этим лишний запрос
         return $message
             ->setRelation('reactions', new Collection())
             ->setRelation('attachments', new Collection())
+            ->setRelation('translations', new Collection())
             ->setRelation('call', $call);
     }
 
@@ -66,7 +67,7 @@ final class ChatMessageRepository extends BaseRepository
      */
     public function latestBefore(int $chatId, ?int $beforeId, int $limit): Collection
     {
-        $query = $this->query()->where('chat_id', $chatId)->with(['reactions', 'call', 'attachments']);
+        $query = $this->query()->where('chat_id', $chatId)->with(['reactions', 'call', 'attachments', 'translations']);
 
         if ($beforeId !== null) {
             $query->getQuery()->where('id', '<', $beforeId);
@@ -85,14 +86,53 @@ final class ChatMessageRepository extends BaseRepository
         $message->delete();
     }
 
+    /**
+     * Переводы старого текста больше не верны: удаляются, новый текст переведёт очередь
+     */
     public function updateBody(ChatMessage $message, string $body): void
     {
-        $message->forceFill(['body' => $body, 'edited_at' => $message->freshTimestamp()])->save();
+        $message->forceFill(['body' => $body, 'body_locale' => null, 'edited_at' => $message->freshTimestamp()])->save();
+        $message->translations()->getQuery()->delete();
+    }
+
+    /**
+     * Сообщение для переводчика вместе с чатом; null — удалили, пока задача ждала очереди
+     */
+    public function findWithChat(int $messageId): ?ChatMessage
+    {
+        return $this->query()->with('chat')->whereKey($messageId)->first();
+    }
+
+    /**
+     * Контекст разговора для переводчика: $limit текстовых сообщений перед $messageId, от старых к новым
+     *
+     * @return list<ChatMessage>
+     */
+    public function contextBefore(int $chatId, int $messageId, int $limit): array
+    {
+        $query = $this->query()->where('chat_id', $chatId)->where('type', ChatMessageTypeEnum::Text->value);
+        $query->getQuery()->where('id', '<', $messageId)->where('body', '!=', '')->orderByDesc('id')->limit($limit);
+
+        return \array_values(\array_reverse($query->get()->all()));
+    }
+
+    /**
+     * @param array<string, string> $translations locale => текст
+     */
+    public function saveTranslations(ChatMessage $message, ?string $bodyLocale, array $translations): ChatMessage
+    {
+        $message->forceFill(['body_locale' => $bodyLocale])->save();
+
+        foreach ($translations as $locale => $body) {
+            $message->translations()->updateOrCreate(['locale' => $locale], ['body' => $body]);
+        }
+
+        return $message->load('translations');
     }
 
     public function loadForResource(ChatMessage $message): ChatMessage
     {
-        return $message->load(['reactions', 'call', 'attachments']);
+        return $message->load(['reactions', 'call', 'attachments', 'translations']);
     }
 
     /**
@@ -107,7 +147,7 @@ final class ChatMessageRepository extends BaseRepository
 
     public function latestInChat(int $chatId): ?ChatMessage
     {
-        $query = $this->query()->where('chat_id', $chatId)->with(['reactions', 'call', 'attachments']);
+        $query = $this->query()->where('chat_id', $chatId)->with(['reactions', 'call', 'attachments', 'translations']);
         $query->getQuery()->orderByDesc('id');
 
         return $query->first();

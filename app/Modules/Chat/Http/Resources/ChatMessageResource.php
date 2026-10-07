@@ -27,7 +27,15 @@ use Illuminate\Http\Resources\Json\JsonResource;
  *     @OA\Property(property="user_id", type="integer", example=1, description="Автор"),
  *     @OA\Property(property="client_id", type="string", format="uuid", description="UUID, выбранный отправителем"),
  *     @OA\Property(property="type", type="string", enum={"text", "call"}, description="call — служебное сообщение о звонке, body пустой"),
- *     @OA\Property(property="body", type="string", example="Привет!"),
+ *     @OA\Property(property="body", type="string", example="Привет!", description="Оригинал, как написал автор"),
+ *     @OA\Property(property="body_locale", type="string", nullable=true, example="ru", description="Язык оригинала по мнению переводчика; null — ещё не переводили"),
+ *     @OA\Property(
+ *         property="translations",
+ *         type="object",
+ *         description="Перевод body на языки интерфейса участников (users.locale), кроме языка оригинала. Пусто — переводить не нужно или перевод ещё идёт: он придёт событием chat.message_translated",
+ *         additionalProperties=@OA\Schema(type="string"),
+ *         example={"vi": "Xin chào!"}
+ *     ),
  *     @OA\Property(
  *         property="forwarded_from",
  *         type="object",
@@ -77,6 +85,8 @@ final class ChatMessageResource extends JsonResource
             'client_id'      => $this->client_id,
             'type'           => $this->type->value,
             'body'           => $this->body,
+            'body_locale'    => $this->body_locale,
+            'translations'   => (object)$this->translations->pluck('body', 'locale')->all(),
             'forwarded_from' => $this->forwarded_from_name === null ? null : [
                 'user_id' => $this->forwarded_from_user_id,
                 'name'    => $this->forwarded_from_name,

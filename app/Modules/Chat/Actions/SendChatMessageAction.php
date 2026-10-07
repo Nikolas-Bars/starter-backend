@@ -18,6 +18,7 @@ use App\Modules\Chat\Tasks\FindChatMessageByClientIdTask;
 use App\Modules\Chat\Tasks\FindChatTask;
 use App\Modules\Chat\Tasks\ListChatMemberIdsTask;
 use App\Modules\Chat\Tasks\PublishChatEventTask;
+use App\Modules\Chat\Tasks\QueueChatMessageTranslationTask;
 use App\Modules\Chat\Tasks\UpdateLastReadMessageTask;
 use App\Modules\User\Models\User;
 use Illuminate\Database\UniqueConstraintViolationException;
@@ -36,13 +37,14 @@ final class SendChatMessageAction extends BaseAction
         private readonly UpdateLastReadMessageTask     $updateLastReadMessageTask,
         private readonly ListChatMemberIdsTask         $listChatMemberIdsTask,
         private readonly PublishChatEventTask          $publishChatEventTask,
+        private readonly QueueChatMessageTranslationTask $queueChatMessageTranslationTask,
     ) {
     }
 
     /**
      * Сохраняет сообщение и рассылает его участникам чата (событие chat.message).
      * Повтор с тем же client_id возвращает уже сохранённое сообщение и ничего не рассылает.
-     * Файлы, которые ещё обрабатываются, придут потом событием chat.attachment.
+     * Файлы, которые ещё обрабатываются, придут потом событием chat.attachment, перевод текста — chat.message_translated.
      *
      * @throws ChatNotFoundException
      * @throws ChatAttachmentNotFoundException
@@ -81,6 +83,7 @@ final class SendChatMessageAction extends BaseAction
         }
 
         $this->publish($member, $message);
+        $this->queueChatMessageTranslationTask->run($message);
 
         return $message;
     }

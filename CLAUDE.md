@@ -166,7 +166,7 @@ Docker compose: `docker-compose.yml` (services: php, mariadb, redis). Ports: API
 - Locale per request via `SetLocale` middleware: `X-Locale`, then `Accept-Language`, fallback `ru`.
   Languages: `app.supported_locales` (`ru`, `vi`, `en`); a new one is a code there plus `lang/{code}/` —
   `LocaleFilesTest` fails while it lacks any key of `lang/ru`. Each user has `users.locale` (interface
-  language; incoming chat messages will be translated into it): set at registration / guest join from
+  language; incoming chat messages are translated into it): set at registration / guest join from
   the request locale, changed by `PUT profile/locale {locale}` (guests too; the reply is already in the
   new language), exposed as `locale` in `UserResource`
 - Secrets of external services (LLM keys for translation, `config/translation.php`) are read only through
@@ -175,6 +175,18 @@ Docker compose: `docker-compose.yml` (services: php, mariadb, redis). Ports: API
   in dumps/JSON and refuses to serialize — never pass the revealed string into jobs, logs, exceptions or
   resources, and never put a key into a URL. Provider base URLs are fixed in config, not env. Every log
   channel taps `RedactSecretsLogTap` (masks `sk-…`, Bearer and `x-api-key` values). Tests force all keys empty
+- Auto-translation of chat messages: send / forward / edit call `QueueChatMessageTranslationTask`, which
+  queues `TranslateChatMessageJob` (only the message id) on the `translation` queue when the provider has
+  a key. `TranslateChatMessageAction` skips the model if everyone else shares the author's locale,
+  otherwise sends `App\Services\Translation\MessageTranslator` the text, the previous
+  `translation.context_messages` text messages, member names/locales and `chats.translation_note`
+  (`PUT chats/{id}/translation-note`) — never emails or ids — stores `chat_message_translations`
+  (one row per locale) and `chat_messages.body_locale`, then publishes `chat.message_translated`.
+  An edit drops old translations and queues a new one; a result for text edited meanwhile is discarded.
+  `ChatMessageResource` exposes `body_locale` and `translations` (`{locale: text}`; over WebSocket an
+  empty map arrives as `[]`). Prompt and response schema live in `TranslationPrompt` (shared by all
+  providers; a new language needs a name there); a provider is one adapter plus a `TranslatorFactory`
+  branch. Never log message texts or prompts; `TranslationFailedException` carries only provider + status
 
 ## Testing
 
