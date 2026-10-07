@@ -47,6 +47,14 @@ final class ChatMemberRepository extends BaseRepository
         return $userIds;
     }
 
+    /**
+     * @return list<ChatMember>
+     */
+    public function withUsers(int $chatId): array
+    {
+        return \array_values($this->query()->where('chat_id', $chatId)->with('user')->get()->all());
+    }
+
     public function updateLastRead(ChatMember $member, int $messageId): ChatMember
     {
         $member->update(['last_read_message_id' => $messageId]);

@@ -18,6 +18,7 @@ use App\Modules\Chat\Tasks\FindChatMessageTask;
 use App\Modules\Chat\Tasks\IsChatMessageAnsweredTask;
 use App\Modules\Chat\Tasks\ListChatMemberIdsTask;
 use App\Modules\Chat\Tasks\PublishChatEventTask;
+use App\Modules\Chat\Tasks\QueueChatMessageTranslationTask;
 use App\Modules\User\Models\User;
 
 final class EditChatMessageAction extends BaseAction
@@ -31,12 +32,14 @@ final class EditChatMessageAction extends BaseAction
         private readonly EditChatMessageTask       $editChatMessageTask,
         private readonly ListChatMemberIdsTask     $listChatMemberIdsTask,
         private readonly PublishChatEventTask      $publishChatEventTask,
+        private readonly QueueChatMessageTranslationTask $queueChatMessageTranslationTask,
     ) {
     }
 
     /**
      * Меняет текст своего сообщения, пока на него не ответили. Участники получают chat.message_updated
-     * с сообщением целиком; тот же текст — без изменений и без события.
+     * с сообщением целиком и без переводов: перевод нового текста придёт событием chat.message_translated.
+     * Тот же текст — без изменений и без события.
      *
      * @throws ChatNotFoundException
      * @throws ChatMessageNotFoundException
@@ -70,6 +73,7 @@ final class EditChatMessageAction extends BaseAction
                 'chat_id' => $chatId,
                 'message' => ChatMessageResource::make($message)->resolve(),
             ]);
+            $this->queueChatMessageTranslationTask->run($message);
         }
 
         return $message;

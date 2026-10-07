@@ -24,6 +24,7 @@ use App\Modules\Chat\Tasks\FindChatTask;
 use App\Modules\Chat\Tasks\GetChatStorageUsageTask;
 use App\Modules\Chat\Tasks\ListChatMemberIdsTask;
 use App\Modules\Chat\Tasks\PublishChatEventTask;
+use App\Modules\Chat\Tasks\QueueChatMessageTranslationTask;
 use App\Modules\Chat\Tasks\UpdateLastReadMessageTask;
 use App\Modules\User\Models\User;
 use App\Modules\User\Tasks\FindUserByIdTask;
@@ -47,6 +48,7 @@ final class ForwardChatMessageAction extends BaseAction
         private readonly UpdateLastReadMessageTask          $updateLastReadMessageTask,
         private readonly ListChatMemberIdsTask              $listChatMemberIdsTask,
         private readonly PublishChatEventTask               $publishChatEventTask,
+        private readonly QueueChatMessageTranslationTask    $queueChatMessageTranslationTask,
     ) {
     }
 
@@ -119,6 +121,7 @@ final class ForwardChatMessageAction extends BaseAction
         /** @var array<string, mixed> $payload */
         $payload = ChatMessageResource::make($message)->resolve();
         $this->publishChatEventTask->run($this->listChatMemberIdsTask->run($chatId), SendChatMessageAction::EVENT, ['message' => $payload]);
+        $this->queueChatMessageTranslationTask->run($message);
 
         return $message;
     }

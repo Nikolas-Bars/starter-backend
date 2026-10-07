@@ -22,6 +22,7 @@ use Illuminate\Http\Resources\Json\JsonResource;
  *     @OA\Property(property="unread_count", type="integer", example=3, description="Непрочитанные текущим пользователем"),
  *     @OA\Property(property="last_read_message_id", type="integer", example=40, description="Докуда прочитал текущий пользователь; 0 — ничего"),
  *     @OA\Property(property="peer_last_read_message_id", type="integer", example=42, description="Докуда прочитал собеседник: свои сообщения с id не больше этого — прочитаны"),
+ *     @OA\Property(property="translation_note", type="string", nullable=true, example="Бабушка и внук", description="Для автоперевода: кто кем друг другу приходится"),
  *     @OA\Property(property="created_at", type="string", format="date-time", nullable=true)
  * )
  *
@@ -47,6 +48,7 @@ final class ChatResource extends JsonResource
             'unread_count'              => $this->unread_count ?? 0,
             'last_read_message_id'      => $own->last_read_message_id ?? 0,
             'peer_last_read_message_id' => $peer->last_read_message_id ?? 0,
+            'translation_note'          => $this->translation_note,
             'created_at'                => $this->created_at?->toIso8601String(),
         ];
     }

@@ -28,14 +28,20 @@ final class RealtimeBus
     public function publish(array $userIds, string $type, array $data): void
     {
         $event = ['user_ids' => \array_values(\array_unique($userIds)), 'message' => ['type' => $type, 'data' => $data]];
+        $json  = \json_encode($event, JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE);
 
         if ($this->usesMemory()) {
-            $this->memory[] = $event;
+            // Через JSON, как и в Redis: тесты видят событие таким, каким его получит WebSocket-сервер
+            $decoded = $this->decode($json);
+
+            if ($decoded !== null) {
+                $this->memory[] = $decoded;
+            }
 
             return;
         }
 
-        $this->redis()->command('rpush', [Config::string('realtime.redis.key'), \json_encode($event, JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE)]);
+        $this->redis()->command('rpush', [Config::string('realtime.redis.key'), $json]);
     }
 
     /**

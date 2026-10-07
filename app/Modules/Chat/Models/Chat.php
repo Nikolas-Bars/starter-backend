@@ -17,13 +17,14 @@ use Illuminate\Support\Carbon;
 /**
  * @property      int                         $id
  * @property      ChatTypeEnum                $type
- * @property      string|null                 $direct_key      Для личного чата: «меньший id:больший id» участников
- * @property      int|null                    $last_message_id Последнее сообщение; null — переписки ещё нет
+ * @property      string|null                 $direct_key       Для личного чата: «меньший id:больший id» участников
+ * @property      int|null                    $last_message_id  Последнее сообщение; null — переписки ещё нет
+ * @property      string|null                 $translation_note Для переводчика: кто кем друг другу приходится
  * @property-read Carbon|null                 $created_at
  * @property-read Carbon|null                 $updated_at
  * @property-read Collection<int, ChatMember> $members
  * @property-read ChatMessage|null            $lastMessage
- * @property-read int|null                    $unread_count    Непрочитанные текущим пользователем (withCount)
+ * @property-read int|null                    $unread_count     Непрочитанные текущим пользователем (withCount)
  */
 final class Chat extends Model
 {
@@ -37,6 +38,7 @@ final class Chat extends Model
         'type',
         'direct_key',
         'last_message_id',
+        'translation_note',
     ];
 
     /**

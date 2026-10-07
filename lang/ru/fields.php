@@ -62,6 +62,9 @@ return [
     'chat_folder' => [
         'name' => 'название папки',
     ],
+    'chat_translation_note' => [
+        'note' => 'заметка для перевода',
+    ],
     'call_link_join' => [
         'name'        => 'имя',
         'device_name' => 'название устройства',

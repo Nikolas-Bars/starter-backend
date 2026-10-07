@@ -61,6 +61,9 @@ return [
     'chat_folder' => [
         'name' => 'folder name',
     ],
+    'chat_translation_note' => [
+        'note' => 'translation note',
+    ],
     'call_link_join' => [
         'name'        => 'name',
         'device_name' => 'device name',

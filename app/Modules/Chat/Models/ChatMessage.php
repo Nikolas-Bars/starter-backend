@@ -15,21 +15,24 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Support\Carbon;
 
 /**
- * @property      int                                  $id
- * @property      int                                  $chat_id
- * @property      int                                  $user_id                Автор
- * @property      string                               $client_id              UUID, выбранный клиентом: повторная отправка не создаёт дубль
- * @property      ChatMessageTypeEnum                  $type
- * @property      int|null                             $call_id                Для type = call
- * @property      string                               $body                   У служебных сообщений пустой; у сообщения с файлами — подпись или пусто
- * @property      int|null                             $forwarded_from_user_id Пересланное: автор оригинала
- * @property      string|null                          $forwarded_from_name    Пересланное: имя автора оригинала на момент пересылки
- * @property      Carbon|null                          $edited_at              Когда автор последний раз менял текст
- * @property-read Carbon|null                          $created_at
- * @property-read Carbon|null                          $updated_at
- * @property-read Collection<int, ChatMessageReaction> $reactions
- * @property-read Collection<int, ChatAttachment>      $attachments
- * @property-read Call|null                            $call
+ * @property      int                                     $id
+ * @property      int                                     $chat_id
+ * @property      int                                     $user_id                Автор
+ * @property      string                                  $client_id              UUID, выбранный клиентом: повторная отправка не создаёт дубль
+ * @property      ChatMessageTypeEnum                     $type
+ * @property      int|null                                $call_id                Для type = call
+ * @property      string                                  $body                   У служебных сообщений пустой; у сообщения с файлами — подпись или пусто
+ * @property      string|null                             $body_locale            Язык текста по мнению переводчика; null — не переводили
+ * @property      int|null                                $forwarded_from_user_id Пересланное: автор оригинала
+ * @property      string|null                             $forwarded_from_name    Пересланное: имя автора оригинала на момент пересылки
+ * @property      Carbon|null                             $edited_at              Когда автор последний раз менял текст
+ * @property-read Carbon|null                             $created_at
+ * @property-read Carbon|null                             $updated_at
+ * @property-read Collection<int, ChatMessageReaction>    $reactions
+ * @property-read Collection<int, ChatAttachment>         $attachments
+ * @property-read Call|null                               $call
+ * @property-read Collection<int, ChatMessageTranslation> $translations
+ * @property-read Chat                                    $chat
  */
 final class ChatMessage extends Model
 {
@@ -77,6 +80,22 @@ final class ChatMessage extends Model
         $attachments->getQuery()->getQuery()->orderBy('id');
 
         return $attachments;
+    }
+
+    /**
+     * @return BelongsTo<Chat, $this>
+     */
+    public function chat(): BelongsTo
+    {
+        return $this->belongsTo(Chat::class);
+    }
+
+    /**
+     * @return HasMany<ChatMessageTranslation, $this>
+     */
+    public function translations(): HasMany
+    {
+        return $this->hasMany(ChatMessageTranslation::class, 'message_id');
     }
 
     /**
