@@ -5,8 +5,10 @@ declare(strict_types=1);
 namespace App\Modules\Chat\Actions;
 
 use App\Actions\BaseAction;
+use App\Modules\Chat\DTO\HeldChatEventDTO;
 use App\Modules\Chat\Enums\ChatMessageTypeEnum;
 use App\Modules\Chat\Models\ChatMember;
+use App\Modules\Chat\Tasks\DeliverHeldChatEventTask;
 use App\Modules\Chat\Tasks\FindChatMessageForTranslationTask;
 use App\Modules\Chat\Tasks\ListChatParticipantsTask;
 use App\Modules\Chat\Tasks\ListTranslationContextTask;
@@ -27,6 +29,7 @@ final class TranslateChatMessageAction extends BaseAction
         private readonly ListTranslationContextTask        $listTranslationContextTask,
         private readonly SaveChatMessageTranslationsTask   $saveChatMessageTranslationsTask,
         private readonly PublishChatEventTask              $publishChatEventTask,
+        private readonly DeliverHeldChatEventTask          $deliverHeldChatEventTask,
     ) {
     }
 
@@ -34,15 +37,23 @@ final class TranslateChatMessageAction extends BaseAction
      * Переводит текст сообщения на языки интерфейса остальных участников с учётом последних
      * сообщений и заметки к чату, сохраняет и рассылает участникам chat.message_translated.
      * Если все говорят на языке автора, нейросеть не вызывается.
+     * $held — событие, которое собеседники ждут вместе с переводом: им оно уходит уже с переводом
+     * вместо chat.message_translated; перевода не будет или он не удался — уходит с оригиналом.
      *
      * @throws TranslationFailedException Очередь повторит задачу
      */
-    public function run(int $messageId): void
+    public function run(int $messageId, ?HeldChatEventDTO $held = null): void
     {
         $message    = $this->findChatMessageForTranslationTask->run($messageId);
         $translator = $this->translatorFactory->make();
 
-        if ($message === null || $translator === null || $message->type !== ChatMessageTypeEnum::Text || $message->body === '') {
+        if ($message === null) {
+            return;
+        }
+
+        if ($translator === null || $message->type !== ChatMessageTypeEnum::Text || $message->body === '') {
+            $this->release($held, $messageId);
+
             return;
         }
 
@@ -67,6 +78,8 @@ final class TranslateChatMessageAction extends BaseAction
         }
 
         if ($targets === []) {
+            $this->release($held, $messageId);
+
             return;
         }
 
@@ -83,22 +96,49 @@ final class TranslateChatMessageAction extends BaseAction
             note: $message->chat->translation_note,
         );
 
-        $result = $translator->translate($request);
+        try {
+            $result = $translator->translate($request);
+        } catch (TranslationFailedException $exception) {
+            // Повтор будет через 10 секунд и позже: собеседник не ждёт его и получает оригинал
+            $this->release($held, $messageId);
+
+            throw $exception;
+        }
 
         // Пока нейросеть думала, текст могли изменить или сообщение удалить: правка поставит свой перевод
         $message = $this->findChatMessageForTranslationTask->run($messageId);
 
-        if ($message === null || $message->body !== $body) {
+        if ($message === null) {
+            return;
+        }
+
+        if ($message->body !== $body) {
+            $this->release($held, $messageId);
+
             return;
         }
 
         $message = $this->saveChatMessageTranslationsTask->run($message, $result->sourceLocale, $result->translations);
 
-        $this->publishChatEventTask->run(\array_keys($names), self::EVENT, [
+        $delivered  = $held !== null && $this->deliverHeldChatEventTask->run($held, $messageId) ? $held->user_ids : [];
+        $recipients = \array_values(\array_diff(\array_keys($names), $delivered));
+
+        if ($recipients === []) {
+            return;
+        }
+
+        $this->publishChatEventTask->run($recipients, self::EVENT, [
             'chat_id'      => $message->chat_id,
             'message_id'   => $message->id,
             'body_locale'  => $message->body_locale,
             'translations' => (object)$message->translations->pluck('body', 'locale')->all(),
         ]);
+    }
+
+    private function release(?HeldChatEventDTO $held, int $messageId): void
+    {
+        if ($held !== null) {
+            $this->deliverHeldChatEventTask->run($held, $messageId);
+        }
     }
 }

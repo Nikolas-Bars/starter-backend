@@ -175,9 +175,14 @@ Docker compose: `docker-compose.yml` (services: php, mariadb, redis). Ports: API
   in dumps/JSON and refuses to serialize — never pass the revealed string into jobs, logs, exceptions or
   resources, and never put a key into a URL. Provider base URLs are fixed in config, not env. Every log
   channel taps `RedactSecretsLogTap` (masks `sk-…`, Bearer and `x-api-key` values). Tests force all keys empty
-- Auto-translation of chat messages: send / forward / edit call `QueueChatMessageTranslationTask`, which
-  queues `TranslateChatMessageJob` (only the message id) on the `translation` queue when the provider has
-  a key. `TranslateChatMessageAction` skips the model if everyone else shares the author's locale,
+- Auto-translation of chat messages: send / forward / edit publish through `NotifyChatMessageTask`, which
+  sends `chat.message` / `chat.message_updated` at once to members sharing the author's locale and holds it
+  for the rest (`HeldChatEventDTO`), then `QueueChatMessageTranslationTask` queues `TranslateChatMessageJob`
+  (only the message id + held recipients) on the `translation` queue when the provider has a key, plus a
+  `DeliverHeldChatEventJob` timer after `translation.hold_seconds`. The held event goes out exactly once
+  (`DeliverHeldChatEventTask`, cache `add` on a token): with translations on success, as the original on
+  a provider error, a skip, an edit meanwhile or the timer — then the translation follows as
+  `chat.message_translated`. `TranslateChatMessageAction` skips the model if everyone else shares the author's locale,
   otherwise sends `App\Services\Translation\MessageTranslator` the text, the previous
   `translation.context_messages` text messages, member names/locales and `chats.translation_note`
   (`PUT chats/{id}/translation-note`) — never emails or ids — stores `chat_message_translations`

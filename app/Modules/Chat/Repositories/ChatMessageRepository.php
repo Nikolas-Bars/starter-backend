@@ -135,6 +135,11 @@ final class ChatMessageRepository extends BaseRepository
         return $message->load(['reactions', 'call', 'attachments', 'translations']);
     }
 
+    public function findForResource(int $messageId): ?ChatMessage
+    {
+        return $this->query()->with(['reactions', 'call', 'attachments', 'translations'])->whereKey($messageId)->first();
+    }
+
     /**
      * Писал ли в чате кто-то, кроме $userId, после сообщения $messageId
      */

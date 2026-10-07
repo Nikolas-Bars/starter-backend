@@ -12,7 +12,6 @@ use App\Modules\Chat\Exceptions\ChatMessageNotForwardableException;
 use App\Modules\Chat\Exceptions\ChatMessageNotFoundException;
 use App\Modules\Chat\Exceptions\ChatNotFoundException;
 use App\Modules\Chat\Exceptions\ChatStorageFullException;
-use App\Modules\Chat\Http\Resources\ChatMessageResource;
 use App\Modules\Chat\Models\ChatAttachment;
 use App\Modules\Chat\Models\ChatMessage;
 use App\Modules\Chat\Tasks\AppendChatMessageTask;
@@ -22,9 +21,7 @@ use App\Modules\Chat\Tasks\FindChatMessageByClientIdTask;
 use App\Modules\Chat\Tasks\FindChatMessageWithAttachmentsTask;
 use App\Modules\Chat\Tasks\FindChatTask;
 use App\Modules\Chat\Tasks\GetChatStorageUsageTask;
-use App\Modules\Chat\Tasks\ListChatMemberIdsTask;
-use App\Modules\Chat\Tasks\PublishChatEventTask;
-use App\Modules\Chat\Tasks\QueueChatMessageTranslationTask;
+use App\Modules\Chat\Tasks\NotifyChatMessageTask;
 use App\Modules\Chat\Tasks\UpdateLastReadMessageTask;
 use App\Modules\User\Models\User;
 use App\Modules\User\Tasks\FindUserByIdTask;
@@ -46,9 +43,7 @@ final class ForwardChatMessageAction extends BaseAction
         private readonly AppendChatMessageTask              $appendChatMessageTask,
         private readonly CopyChatAttachmentsTask            $copyChatAttachmentsTask,
         private readonly UpdateLastReadMessageTask          $updateLastReadMessageTask,
-        private readonly ListChatMemberIdsTask              $listChatMemberIdsTask,
-        private readonly PublishChatEventTask               $publishChatEventTask,
-        private readonly QueueChatMessageTranslationTask    $queueChatMessageTranslationTask,
+        private readonly NotifyChatMessageTask              $notifyChatMessageTask,
     ) {
     }
 
@@ -118,10 +113,7 @@ final class ForwardChatMessageAction extends BaseAction
             throw $exception;
         }
 
-        /** @var array<string, mixed> $payload */
-        $payload = ChatMessageResource::make($message)->resolve();
-        $this->publishChatEventTask->run($this->listChatMemberIdsTask->run($chatId), SendChatMessageAction::EVENT, ['message' => $payload]);
-        $this->queueChatMessageTranslationTask->run($message);
+        $this->notifyChatMessageTask->run($message, SendChatMessageAction::EVENT);
 
         return $message;
     }

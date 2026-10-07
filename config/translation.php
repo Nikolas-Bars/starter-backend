@@ -15,6 +15,10 @@ return [
     // Секунды на ответ провайдера; дольше — задача в очереди повторится позже
     'timeout' => (int) env('TRANSLATION_TIMEOUT', 30),
 
+    // Сколько секунд собеседник с другим языком ждёт новое сообщение вместе с переводом; дольше —
+    // получит оригинал, а перевод придёт следом
+    'hold_seconds' => (int) env('TRANSLATION_HOLD_SECONDS', 15),
+
     'providers' => [
         'openai' => [
             'model'        => env('OPENAI_TRANSLATION_MODEL', 'gpt-4o-mini'),

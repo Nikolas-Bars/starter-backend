@@ -8,17 +8,13 @@ use App\Actions\BaseAction;
 use App\Modules\Chat\DTO\SendChatMessageDTO;
 use App\Modules\Chat\Exceptions\ChatAttachmentNotFoundException;
 use App\Modules\Chat\Exceptions\ChatNotFoundException;
-use App\Modules\Chat\Http\Resources\ChatMessageResource;
-use App\Modules\Chat\Models\ChatMember;
 use App\Modules\Chat\Models\ChatMessage;
 use App\Modules\Chat\Tasks\AppendChatMessageTask;
 use App\Modules\Chat\Tasks\AttachChatAttachmentsTask;
 use App\Modules\Chat\Tasks\FindChatMemberTask;
 use App\Modules\Chat\Tasks\FindChatMessageByClientIdTask;
 use App\Modules\Chat\Tasks\FindChatTask;
-use App\Modules\Chat\Tasks\ListChatMemberIdsTask;
-use App\Modules\Chat\Tasks\PublishChatEventTask;
-use App\Modules\Chat\Tasks\QueueChatMessageTranslationTask;
+use App\Modules\Chat\Tasks\NotifyChatMessageTask;
 use App\Modules\Chat\Tasks\UpdateLastReadMessageTask;
 use App\Modules\User\Models\User;
 use Illuminate\Database\UniqueConstraintViolationException;
@@ -35,16 +31,15 @@ final class SendChatMessageAction extends BaseAction
         private readonly AppendChatMessageTask         $appendChatMessageTask,
         private readonly AttachChatAttachmentsTask     $attachChatAttachmentsTask,
         private readonly UpdateLastReadMessageTask     $updateLastReadMessageTask,
-        private readonly ListChatMemberIdsTask         $listChatMemberIdsTask,
-        private readonly PublishChatEventTask          $publishChatEventTask,
-        private readonly QueueChatMessageTranslationTask $queueChatMessageTranslationTask,
+        private readonly NotifyChatMessageTask         $notifyChatMessageTask,
     ) {
     }
 
     /**
      * Сохраняет сообщение и рассылает его участникам чата (событие chat.message).
      * Повтор с тем же client_id возвращает уже сохранённое сообщение и ничего не рассылает.
-     * Файлы, которые ещё обрабатываются, придут потом событием chat.attachment, перевод текста — chat.message_translated.
+     * Файлы, которые ещё обрабатываются, придут потом событием chat.attachment. Собеседник с другим языком
+     * получит chat.message вместе с переводом (NotifyChatMessageTask), автор — перевод событием chat.message_translated.
      *
      * @throws ChatNotFoundException
      * @throws ChatAttachmentNotFoundException
@@ -82,17 +77,8 @@ final class SendChatMessageAction extends BaseAction
             return $this->findChatMessageByClientIdTask->run($user->id, $dto->client_id) ?? throw $exception;
         }
 
-        $this->publish($member, $message);
-        $this->queueChatMessageTranslationTask->run($message);
+        $this->notifyChatMessageTask->run($message, self::EVENT);
 
         return $message;
-    }
-
-    private function publish(ChatMember $member, ChatMessage $message): void
-    {
-        /** @var array<string, mixed> $payload */
-        $payload = ChatMessageResource::make($message)->resolve();
-
-        $this->publishChatEventTask->run($this->listChatMemberIdsTask->run($member->chat_id), self::EVENT, ['message' => $payload]);
     }
 }
