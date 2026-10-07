@@ -34,6 +34,22 @@ final class RegisterControllerTest extends TestCase
         self::assertNotSame('Password123', $user->password);
         self::assertTrue(Hash::check('Password123', $user->password));
         self::assertSame(1, $user->tokens()->count());
+        self::assertSame('ru', $user->locale);
+    }
+
+    public function testStoresRequestLocale(): void
+    {
+        $this->withHeader('X-Locale', 'vi')
+            ->postJson(self::URL, [
+                'name'                  => 'Lan',
+                'username'              => 'lan',
+                'email'                 => 'lan@example.com',
+                'password'              => 'Password123',
+                'password_confirmation' => 'Password123',
+            ])
+            ->assertCreated()
+            ->assertJsonPath('message', 'Đăng ký thành công.')
+            ->assertJsonPath('data.user.locale', 'vi');
     }
 
     public function testIssuedTokenAuthorizesRequests(): void

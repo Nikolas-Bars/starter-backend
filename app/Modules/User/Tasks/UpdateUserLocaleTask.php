@@ -8,15 +8,15 @@ use App\Modules\User\Models\User;
 use App\Modules\User\Repositories\UserRepository;
 use App\Tasks\BaseTask;
 
-final class CreateGuestUserTask extends BaseTask
+final class UpdateUserLocaleTask extends BaseTask
 {
     public function __construct(
         private readonly UserRepository $repository,
     ) {
     }
 
-    public function run(string $name, int $hostId, string $locale): User
+    public function run(User $user, string $locale): User
     {
-        return $this->repository->storeGuest($name, $hostId, $locale);
+        return $this->repository->updateLocale($user, $locale);
     }
 }

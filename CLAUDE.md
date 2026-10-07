@@ -163,7 +163,18 @@ Docker compose: `docker-compose.yml` (services: php, mariadb, redis). Ports: API
   (`$errorMessage` stores the key), success messages in `messages.php`, field names in `fields.php`
   grouped per form (`attributes()` returns `Translator::group('fields.{form}')`). Resolve keys via
   `App\Services\Translator` (always returns a string)
-- Locale per request via `SetLocale` middleware: `X-Locale`, then `Accept-Language`, fallback `ru`
+- Locale per request via `SetLocale` middleware: `X-Locale`, then `Accept-Language`, fallback `ru`.
+  Languages: `app.supported_locales` (`ru`, `vi`, `en`); a new one is a code there plus `lang/{code}/` —
+  `LocaleFilesTest` fails while it lacks any key of `lang/ru`. Each user has `users.locale` (interface
+  language; incoming chat messages will be translated into it): set at registration / guest join from
+  the request locale, changed by `PUT profile/locale {locale}` (guests too; the reply is already in the
+  new language), exposed as `locale` in `UserResource`
+- Secrets of external services (LLM keys for translation, `config/translation.php`) are read only through
+  `App\Services\SecretReader` at the moment of use: `{key}_file` (prod: `deploy/secrets/*`, mounted
+  read-only) wins over the plain `{key}` env value (local dev). It returns a `Secret` that masks itself
+  in dumps/JSON and refuses to serialize — never pass the revealed string into jobs, logs, exceptions or
+  resources, and never put a key into a URL. Provider base URLs are fixed in config, not env. Every log
+  channel taps `RedactSecretsLogTap` (masks `sk-…`, Bearer and `x-api-key` values). Tests force all keys empty
 
 ## Testing
 

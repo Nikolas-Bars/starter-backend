@@ -27,12 +27,14 @@ if [[ ! -f .env ]]; then
     echo "deploy/.env восстановлен из архива, PUBLIC_IP=$ip"
 fi
 
-if [[ -f "$work/firebase-credentials.json" && ! -f secrets/firebase-credentials.json ]]; then
-    # Владелец — www-data контейнера (uid 33): от него работают очередь и сервер звонков
-    install -d -m 700 -o 33 -g 33 secrets
-    install -m 600 -o 33 -g 33 "$work/firebase-credentials.json" secrets/
-    echo "Ключ Firebase восстановлен из архива"
-fi
+for secret in firebase-credentials.json openai-api-key anthropic-api-key; do
+    if [[ -f "$work/$secret" && ! -f "secrets/$secret" ]]; then
+        # Владелец — www-data контейнера (uid 33): от него работают очередь и сервер звонков
+        install -d -m 700 -o 33 -g 33 secrets
+        install -m 600 -o 33 -g 33 "$work/$secret" secrets/
+        echo "Ключ $secret восстановлен из архива"
+    fi
+done
 
 docker compose up -d --build --wait
 docker compose exec -T mariadb sh -c \
