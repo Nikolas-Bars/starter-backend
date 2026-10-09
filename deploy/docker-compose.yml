@@ -83,6 +83,10 @@ services:
       - attachments:/attachments:ro
       - caddy_data:/data
       - caddy_config:/config
+    # edge — сеть для соседних проектов на этом сервере (Artverse): их Caddy в ней, наружу они не открыты
+    networks:
+      - default
+      - edge
     depends_on:
       - php
 
@@ -117,6 +121,11 @@ services:
       - --denied-peer-ip=172.16.0.0-172.31.255.255
       - --denied-peer-ip=192.168.0.0-192.168.255.255
       - --denied-peer-ip=::1
+
+networks:
+  # Имя без префикса проекта: Artverse подключается к ней как к внешней
+  edge:
+    name: edge
 
 volumes:
   mariadb:

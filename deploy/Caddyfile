@@ -51,3 +51,10 @@
 		-Server
 	}
 }
+
+# Artverse (соцсеть художников) временно живёт на этом сервере своим docker compose в /opt/artverse.
+# Сертификат получает этот Caddy, запросы уходят в Caddy Artverse по сети edge. Artverse не запущен —
+# по этому адресу 502, мессенджер это не задевает
+art.{$DOMAIN} {
+	reverse_proxy artverse-web:80
+}
