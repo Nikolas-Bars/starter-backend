@@ -39,6 +39,16 @@ echo "CALL_TURN_SECRET=$(openssl rand -hex 32)" >> .env   # CALL_TURN_USERNAME/C
 
 Сделать это нужно до мёржа изменений: деплой пересоздаст coturn уже с новым секретом.
 
+### Сосед: Artverse
+
+На этом же сервере временно живёт Artverse (соцсеть художников, репозитории `artverse-*`) —
+https://art.call-yansburg.com. Это отдельный docker compose в `/opt/artverse/artverse-backend/deploy`
+со своими базой, Redis и файлами; наружу он портов не открывает. Сертификат для `art.{$DOMAIN}`
+получает Caddy мессенджера и передаёт запросы контейнеру `artverse-web` по сети `edge` (её создаёт
+compose мессенджера). TURN общий: в `.env` Artverse тот же `CALL_TURN_SECRET`.
+Как Artverse обновлять — его `deploy/README.md`. Остановить его можно, не трогая мессенджер:
+`cd /opt/artverse/artverse-backend/deploy && docker compose down`.
+
 ## Как вносить изменения
 
 Прямой пуш в `main` закрыт: изменения попадают туда только через Pull Request с зелёными проверками.
