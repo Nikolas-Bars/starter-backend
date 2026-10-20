@@ -49,6 +49,15 @@ compose мессенджера). TURN общий: в `.env` Artverse тот же
 Как Artverse обновлять — его `deploy/README.md`. Остановить его можно, не трогая мессенджер:
 `cd /opt/artverse/artverse-backend/deploy && docker compose down`.
 
+### Сосед: C# School
+
+Так же временно живёт C# School (обучение C#, репозиторий `csharp-school`) —
+https://csharp.call-yansburg.com: отдельный docker compose в `/opt/csharp-school/deploy` со своими
+базой и Redis, без портов наружу, с лимитами памяти (~1.1 ГБ в сумме). Сертификат для
+`csharp.{$DOMAIN}` получает Caddy мессенджера и передаёт запросы контейнеру `csharp-school-web` по
+сети `edge`. Образы C# School на сервере не собираются (берутся из GHCR). Обновлять — его
+`deploy/README.md`; остановить, не трогая мессенджер: `cd /opt/csharp-school/deploy && docker compose down`.
+
 ## Как вносить изменения
 
 Прямой пуш в `main` закрыт: изменения попадают туда только через Pull Request с зелёными проверками.

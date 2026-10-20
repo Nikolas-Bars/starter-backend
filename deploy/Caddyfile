@@ -58,3 +58,10 @@
 art.{$DOMAIN} {
 	reverse_proxy artverse-web:80
 }
+
+# C# School (обучение C#) временно живёт на этом сервере своим docker compose в /opt/csharp-school
+# (его deploy/README.md). Сертификат получает этот Caddy, запросы уходят в Caddy C# School по сети
+# edge. C# School не запущен — по этому адресу 502, мессенджер это не задевает
+csharp.{$DOMAIN} {
+	reverse_proxy csharp-school-web:80
+}
