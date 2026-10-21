@@ -13,3 +13,7 @@ storage/framework/views/*
 deploy/.env
 tests
 app/Modules/*/Tests
+# Деплой и документация в образ не нужны: их правка не должна пересобирать php (deploy/README.md)
+deploy
+.github
+*.md
