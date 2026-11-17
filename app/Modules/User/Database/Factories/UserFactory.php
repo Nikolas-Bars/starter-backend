@@ -37,18 +37,19 @@ final class UserFactory extends Factory
     }
 
     /**
-     * Ник из латиницы, цифр и _, как требует профиль
+     * Ник из латиницы, цифр и _, как требует профиль.
+     * Замыкания в state() не static: Laravel привязывает их к фабрике через bindTo().
      */
     public function withUsername(): static
     {
-        return $this->state(static fn(): array => [
+        return $this->state(fn(): array => [
             'username' => Str::of(fake('en_US')->unique()->userName())->lower()->replaceMatches('/[^a-z0-9_]/', '_')->limit(32, '')->toString(),
         ]);
     }
 
     public function unverified(): static
     {
-        return $this->state(static fn(): array => [
+        return $this->state(fn(): array => [
             'email_verified_at' => null,
         ]);
     }
