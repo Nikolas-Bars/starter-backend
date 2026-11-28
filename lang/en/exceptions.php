@@ -46,4 +46,8 @@ return [
         'guest_forbidden' => 'Not available for guests. Sign up to continue.',
         'avatar_invalid'  => 'Could not read the image. Choose another photo.',
     ],
+
+    'vpn' => [
+        'not_allowed' => 'VPN is not available to you.',
+    ],
 ];

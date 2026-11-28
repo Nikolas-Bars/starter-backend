@@ -53,4 +53,7 @@ return [
         'avatar_deleted'  => 'Đã xóa ảnh đại diện.',
         'locale_updated'  => 'Đã lưu ngôn ngữ.',
     ],
+    'vpn' => [
+        'profiles' => 'Hồ sơ VPN.',
+    ],
 ];
