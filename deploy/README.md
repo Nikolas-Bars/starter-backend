@@ -230,6 +230,7 @@ python3 vpn.py add xhttp-9443 --port 9443 --network xhttp       # XHTTP: пут�
 python3 vpn.py set tcp --sni www.microsoft.com                  # сменить маскировку входа
 python3 vpn.py set tcp --port 8880                              # сменить порт
 python3 vpn.py remove tcp-8443
+python3 vpn.py check tcp                                        # работает ли вход: страница через него
 python3 vpn.py check-sni www.microsoft.com                      # отвечает ли сайт для маскировки
 # ссылка для приложения печатает ключ — только через pipe прямо в бэкенд:
 python3 vpn.py link tcp-8443 | docker compose exec -T php php artisan vpn:profile:add "Запасной · 8443" --position=3 --stdin
@@ -244,11 +245,35 @@ python3 vpn.py link tcp | docker compose exec -T php php artisan vpn:profile:edi
 порт открывается `ufw allow ПОРТ/tcp comment "vpn …"`, затем `docker restart vpn-xray`, а ссылка на него
 добавляется `vpn:profile:add`.
 
+### Новый сервер VPN
+
+Чистая машина с Ubuntu/Debian и root по SSH (лучше вне России и не тот же хостер, что основной сервер).
+На отдельном сервере 443 свободен — Reality на нём заметно незаметнее нестандартных портов.
+
+```bash
+# 1. С Мака: ключ для входа без пароля (спросит пароль root один раз)
+ssh-copy-id root@НОВЫЙ_IP
+# 2. Docker, Python и скрипт
+ssh root@НОВЫЙ_IP 'apt-get update -qq && apt-get install -y -qq docker.io docker-compose-v2 python3'
+scp deploy/vpn.py root@НОВЫЙ_IP:/root/vpn.py
+# 3. Сервер VPN: ключи Reality, ключ приложения, входы tcp (443) и xhttp (2053), контейнер, ufw
+ssh root@НОВЫЙ_IP 'python3 /root/vpn.py init --host НОВЫЙ_IP --dry-run && python3 /root/vpn.py init --host НОВЫЙ_IP'
+ssh root@НОВЫЙ_IP 'python3 /root/vpn.py check tcp && python3 /root/vpn.py check xhttp'
+# 4. Профили в приложение — ссылки идут через pipe прямо в бэкенд, на экран не попадают
+ssh root@НОВЫЙ_IP 'python3 /root/vpn.py link tcp' | ssh starter 'cd /opt/starter/starter-backend/deploy && docker compose exec -T php php artisan vpn:profile:add "Сервер 2 · TCP" --position=0 --stdin'
+ssh root@НОВЫЙ_IP 'python3 /root/vpn.py link xhttp' | ssh starter 'cd /opt/starter/starter-backend/deploy && docker compose exec -T php php artisan vpn:profile:add "Сервер 2 · XHTTP" --position=0 --stdin'
+```
+
+`init` откажется, если `/opt/vpn` уже настроен или порт занят; если Xray не поднялся, убирает всё
+созданное. Ключ приложения на новом сервере свой (новый UUID) — он попадает только в ссылки профилей.
+Дальше этим сервером управляют те же `vpn.py list/add/set/remove/check/link`, запущенные на нём.
+
 ### Если жалуются, что VPN не подключается
 
 1. Спросить, что пишет экран VPN после «Перебрать по очереди»: у каждого сервера будет «не отвечает» или
    время ответа. «Нет связи с сервером приложения» — бэкенд недоступен, человек на сохранённом списке.
-2. Проверить, что сервер жив: `python3 vpn.py list`, `docker ps --filter name=vpn-xray`.
+2. Проверить входы с самого сервера: `python3 vpn.py check tcp`, `python3 vpn.py check xhttp`. Работают —
+   значит, сервер жив, а режут дорогу до него из России; не работают — чинить сервер.
 3. Добавить вход с другим портом и/или маскировкой и сразу выдать его приложению — две команды:
    ```bash
    python3 vpn.py add tcp-8443 --port 8443 --network tcp --sni www.microsoft.com
@@ -261,9 +286,12 @@ python3 vpn.py link tcp | docker compose exec -T php php artisan vpn:profile:edi
    (`vpn.py link tcp | … vpn:profile:edit ID --uri --stdin`): старая ссылка с прежним SNI после этого не
    работает.
 5. Если заблокирован сам IP сервера (не работает ни один вход, ни сайт), помогут только профили на другом
-   сервере: поднять там Xray, а ссылки добавить `vpn:profile:add` — приложение, у которого бэкенд
-   недоступен, увидит их, как только подключится через любой рабочий профиль из сохранённого списка.
-   Поэтому держать запасной сервер в списке стоит заранее.
+   сервере — «Новый сервер VPN» выше. Приложение, у которого бэкенд недоступен, увидит новые профили, как
+   только подключится через любой рабочий профиль из сохранённого списка. Поэтому держать запасной
+   сервер в списке стоит заранее.
+6. Готовая ссылка от другого VPN (`vless://`, `trojan://`, `ss://`, `vmess://`, `hysteria2://`):
+   `docker compose exec php php artisan vpn:profile:add "Название" --position=0` — ссылку спросит скрыто.
+7. Нерабочие профили спрятать: `vpn:profiles` → `vpn:profile:edit ID --disable`.
 
 Reality не любит нестандартные порты (Xray предупреждает: порт не 443 повышает шанс блокировки), а 443 на
 этом сервере занят сайтом. Отдельный сервер VPN снимает и это ограничение.
