@@ -46,4 +46,8 @@ return [
         'guest_forbidden' => 'Khách không dùng được chức năng này. Hãy đăng ký để tiếp tục.',
         'avatar_invalid'  => 'Không đọc được ảnh. Hãy chọn ảnh khác.',
     ],
+
+    'vpn' => [
+        'not_allowed' => 'Bạn không được dùng VPN.',
+    ],
 ];

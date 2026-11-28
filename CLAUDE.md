@@ -29,7 +29,7 @@ app/Modules/{ModuleName}/
 └── Tests/            # Unit and Feature tests
 ```
 
-Modules: User (model, factory, seeder, repository, user list), Auth (register, login, logout, me),
+Modules: User (model, factory, seeder, repository, user list), Auth (register, login, logout, me), Vpn,
 Call (1-on-1 video calls: call history, ICE servers, own WebSocket signaling server in `Call/WebSockets/`,
 started by `php artisan call:ws-serve` under supervisor; restart it after code changes with `make ws-restart`).
 Media goes peer-to-peer over WebRTC; the server only relays JSON signaling messages and records call statuses.
@@ -103,6 +103,14 @@ another user moves to them). `App\Services\FcmClient` sends data-only FCM HTTP v
 account key from `push.fcm.credentials` (`FCM_CREDENTIALS`, default `storage/app/firebase-credentials.json`,
 in prod `deploy/secrets/`); no key means push is off and `UserHasPushDevicesTask` is false. Tests force
 `FCM_CREDENTIALS=""`; `Tests\FakeFirebase::enable()` fakes Google with a real RSA key.
+VPN (module Vpn, mobile only): `GET vpn/profiles` returns enabled `vpn_profiles` (`name`, `uri` — a share link
+`vless|vmess|trojan|ss|hysteria2|hy2|socks://` parsed by the core on the phone, or Xray outbounds JSON used as is;
+cast `encrypted`) ordered by `position`, only to users with a `vpn_grants` row (else 403 `VpnNotAllowedException`,
+the app hides VPN; guests never). No admin UI: artisan `vpn:profiles`, `vpn:profile:add|edit|remove` (`secret()`
+or `--stdin`, keys stay out of shell history), `vpn:access {user?} {--revoke}`. `ValidateVpnUriTask` checks only
+the shape (scheme, host, port, key; JSON — `protocol` per outbound); the core validates the rest. The VPN server
+itself (`/opt/vpn`, container `vpn-xray`) is managed by `deploy/vpn.py` (list/add/set/remove/link) — see
+`deploy/README.md` «VPN в приложении».
 Calls and push: the app sends `client.state {background}` over the socket. `call.invite` to a callee with no
 foreground connection but with push devices rings anyway and queues `SendCallPushJob` (incoming: `call_id`,
 `caller_name`, `decline_token`, `expires_at`); the WS loop never calls FCM itself. When the app connects it
