@@ -53,4 +53,7 @@ return [
         'avatar_deleted'  => 'Аватарка удалена.',
         'locale_updated'  => 'Язык сохранён.',
     ],
+    'vpn' => [
+        'profiles' => 'Профили VPN.',
+    ],
 ];

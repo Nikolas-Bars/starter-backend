@@ -53,4 +53,7 @@ return [
         'avatar_deleted'  => 'Avatar removed.',
         'locale_updated'  => 'Language saved.',
     ],
+    'vpn' => [
+        'profiles' => 'VPN profiles.',
+    ],
 ];

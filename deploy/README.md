@@ -169,6 +169,105 @@ Restricted, доступ только к Model capabilities (Chat completions / 
 бюджет. Подключение — те же шаги с файлом `openai-api-key` вместо `anthropic-api-key` и
 `TRANSLATION_PROVIDER=openai`; модель — `gpt-4o-mini`.
 
+## VPN в приложении
+
+В мобильном приложении есть встроенный VPN-клиент — ядро Xray прямо в приложении. Сервер VPN — отдельный
+Xray на этом же сервере (`/opt/vpn`, контейнер `vpn-xray`): входы VLESS + Reality, маскировка под
+`www.samsung.com`. Бэкенд только раздаёт приложению **профили** и решает, кому VPN виден.
+
+Профиль — одно из двух, и меняется без обновления приложения:
+
+- **ссылка** `vless://`, `vmess://` (VMessAEAD `vmess://uuid@host:port?…`; старый `vmess://BASE64` ядро не
+  понимает), `trojan://`, `ss://` (Shadowsocks, SIP002), `hysteria2://` (`hy2://`), `socks://` — её разбирает
+  ядро на телефоне; транспорт любой из tcp, xhttp, ws, grpc, httpupgrade, kcp,
+  защита reality или tls;
+- **JSON исходящих Xray** — `{"outbounds": [ … ]}` или один outbound — применяется как есть, первый
+  исходящий получает тег `proxy`, остальные — вспомогательные (например, `freedom` с `fragment` для
+  `dialerProxy`). Это для того, чего нет в ссылках.
+
+Приложение берёт список при каждом открытии экрана VPN; кнопка «Перебрать по очереди» проверяет профили
+сверху вниз (по `position`) и включает первый, который ответил. Если бэкенд недоступен (заблокирован,
+лежит), приложение показывает список, полученный в прошлый раз (он хранится в Android Keystore) — VPN
+включается и без связи с бэкендом, а после включения список обновится. Поэтому **профили лучше держать
+заранее разные** (порты, транспорты, маскировка, а со временем и серверы): перебор найдёт рабочий сам.
+
+### Профили и доступ (бэкенд)
+
+```bash
+ssh starter
+cd /opt/starter/starter-backend/deploy
+docker compose exec php php artisan vpn:profiles                                  # список (ключи не показываются)
+docker compose exec php php artisan vpn:profile:add "Основной · TCP" --position=1  # ссылку или JSON спросит скрыто
+docker compose exec -T php php artisan vpn:profile:add "Запасной" --stdin < profile.json  # многострочный JSON
+docker compose exec php php artisan vpn:profile:edit 1 --uri                      # новая ссылка (скрыто)
+docker compose exec php php artisan vpn:profile:edit 1 --name="Запасной" --position=2
+docker compose exec php php artisan vpn:profile:edit 1 --disable                  # спрятать, не удаляя (--enable)
+docker compose exec php php artisan vpn:profile:remove 1
+docker compose exec php php artisan vpn:access mama@example.com                   # выдать (id или email)
+docker compose exec php php artisan vpn:access mama@example.com --revoke          # забрать
+docker compose exec php php artisan vpn:access                                    # у кого есть
+```
+
+Ссылки хранятся в базе зашифрованными (`APP_KEY`). Бэкенд проверяет только форму (схема, адрес, порт,
+ключ; у JSON — `protocol` у каждого исходящего); целиком профиль проверяет ядро, когда приложение
+проверяет сервер, — профиль, который ядро не поняло, в приложении отмечается «не отвечает» и пропускается.
+
+### Сервер VPN: `deploy/vpn.py`
+
+Входы сервера VPN меняет `deploy/vpn.py` (Python, без зависимостей). Каждое изменение: проверка нового
+конфига `xray run -test` тем же образом, что у `vpn-xray` (не прошла — ничего не меняется), бэкап в
+`/opt/vpn/backup-<время>/`, правило ufw, перезапуск `vpn-xray` (у подключённых связь моргнёт на 1–2
+секунды). Если Xray после перезапуска не поднялся, скрипт сам возвращает прежний конфиг и правила ufw.
+`--dry-run` — только проверить. `vpn-xray` работает в сети хоста (`network_mode: host`), поэтому новый
+порт виден снаружи сразу после правила ufw.
+
+```bash
+ssh starter
+cd /opt/starter/starter-backend/deploy
+python3 vpn.py list                                             # входы: порт, транспорт, маскировка
+python3 vpn.py add tcp-8443 --port 8443 --network tcp --sni www.microsoft.com   # новый вход
+python3 vpn.py add xhttp-9443 --port 9443 --network xhttp       # XHTTP: путь генерируется сам
+python3 vpn.py set tcp --sni www.microsoft.com                  # сменить маскировку входа
+python3 vpn.py set tcp --port 8880                              # сменить порт
+python3 vpn.py remove tcp-8443
+python3 vpn.py check-sni www.microsoft.com                      # отвечает ли сайт для маскировки
+# ссылка для приложения печатает ключ — только через pipe прямо в бэкенд:
+python3 vpn.py link tcp-8443 | docker compose exec -T php php artisan vpn:profile:add "Запасной · 8443" --position=3 --stdin
+python3 vpn.py link tcp | docker compose exec -T php php artisan vpn:profile:edit 3 --uri --stdin
+```
+
+Входы — VLESS + Reality, ключ Reality общий (`/opt/vpn/keys.json`), пользователи — все из
+`/opt/vpn/users.json` (`friend01…10` и общий ключ приложения `kolyansburg-app`). Другие протоколы
+(Trojan, Shadowsocks, VLESS + WebSocket за CDN) скрипт не заводит: их inbound пишется в
+`/opt/vpn/config.json` руками по документации Xray, проверяется
+`docker run --rm -v /opt/vpn/config.json:/c.json:ro ghcr.io/xtls/xray-core:latest run -test -c /c.json`,
+порт открывается `ufw allow ПОРТ/tcp comment "vpn …"`, затем `docker restart vpn-xray`, а ссылка на него
+добавляется `vpn:profile:add`.
+
+### Если жалуются, что VPN не подключается
+
+1. Спросить, что пишет экран VPN после «Перебрать по очереди»: у каждого сервера будет «не отвечает» или
+   время ответа. «Нет связи с сервером приложения» — бэкенд недоступен, человек на сохранённом списке.
+2. Проверить, что сервер жив: `python3 vpn.py list`, `docker ps --filter name=vpn-xray`.
+3. Добавить вход с другим портом и/или маскировкой и сразу выдать его приложению — две команды:
+   ```bash
+   python3 vpn.py add tcp-8443 --port 8443 --network tcp --sni www.microsoft.com
+   python3 vpn.py link tcp-8443 | docker compose exec -T php php artisan vpn:profile:add "Запасной · 8443" --position=0 --stdin
+   ```
+   Новый профиль встанет первым, если его `--position` меньше, чем у остальных (порядок — в
+   `vpn:profiles`; при равных выше тот, что добавлен раньше, поэтому основные профили держите с 1).
+   Человеку достаточно открыть экран VPN и нажать «Перебрать по очереди» — обновлять приложение не нужно.
+4. Сменить маскировку у существующего входа (`vpn.py set tcp --sni …`) и обновить ссылку профиля
+   (`vpn.py link tcp | … vpn:profile:edit ID --uri --stdin`): старая ссылка с прежним SNI после этого не
+   работает.
+5. Если заблокирован сам IP сервера (не работает ни один вход, ни сайт), помогут только профили на другом
+   сервере: поднять там Xray, а ссылки добавить `vpn:profile:add` — приложение, у которого бэкенд
+   недоступен, увидит их, как только подключится через любой рабочий профиль из сохранённого списка.
+   Поэтому держать запасной сервер в списке стоит заранее.
+
+Reality не любит нестандартные порты (Xray предупреждает: порт не 443 повышает шанс блокировки), а 443 на
+этом сервере занят сайтом. Отдельный сервер VPN снимает и это ограничение.
+
 ## Бэкапы
 
 Каждый день в 03:30 (время сервера, UTC) `deploy/backup.sh` делает две копии:
