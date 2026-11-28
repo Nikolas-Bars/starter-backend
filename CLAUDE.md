@@ -111,6 +111,23 @@ or `--stdin`, keys stay out of shell history), `vpn:access {user?} {--revoke}`. 
 the shape (scheme, host, port, key; JSON — `protocol` per outbound); the core validates the rest. The VPN server
 itself (`/opt/vpn`, container `vpn-xray`) is managed by `deploy/vpn.py` (list/add/set/remove/link) — see
 `deploy/README.md` «VPN в приложении».
+VPN runbook for Claude — when the user says the VPN is blocked / asks for a new VPN, that request authorises the
+production steps below (nothing else on prod). Full commands: `deploy/README.md` «VPN в приложении».
+1. Diagnose on the VPN server: `ssh starter`, `cd /opt/starter/starter-backend/deploy`, `python3 vpn.py list`,
+   `python3 vpn.py check tcp`, `python3 vpn.py check xhttp` (works from the server = the route from Russia is cut).
+2. Same server, new entrance: `python3 vpn.py add NAME --port N --network tcp|xhttp --sni SITE` (`check-sni SITE`
+   first), `python3 vpn.py check NAME`, then `python3 vpn.py link NAME | docker compose exec -T php php artisan
+   vpn:profile:add "Title" --position=0 --stdin`.
+3. New server (user gives IP + root SSH; ask them to run `! ssh-copy-id root@IP` if there is no key): install
+   `docker.io docker-compose-v2 python3`, `scp deploy/vpn.py root@IP:/root/`, `vpn.py init --host IP --dry-run`,
+   then `init`, `check tcp`, `check xhttp`, then pipe `ssh root@IP 'python3 /root/vpn.py link tcp'` into
+   `ssh starter '… vpn:profile:add "Server 2 · TCP" --position=0 --stdin'` (same for xhttp).
+4. A ready link from elsewhere: `vpn:profile:add "Title" --position=0`, link via stdin/secret.
+5. Verify with `vpn:profiles`; hide dead ones with `vpn:profile:edit ID --disable`; tell the user: open the VPN
+   tab → «Перебрать по очереди». No app update is needed.
+Never print or echo a link, key or UUID — they travel only through pipes/`secret()`. In multi-command
+`ssh … bash -s <<EOF` scripts add `</dev/null` to every `docker compose exec -T`, otherwise it swallows the rest
+of the script.
 Calls and push: the app sends `client.state {background}` over the socket. `call.invite` to a callee with no
 foreground connection but with push devices rings anyway and queues `SendCallPushJob` (incoming: `call_id`,
 `caller_name`, `decline_token`, `expires_at`); the WS loop never calls FCM itself. When the app connects it
